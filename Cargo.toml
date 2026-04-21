@@ -1,0 +1,6 @@
+[workspace]
+members = ["crates/crow-lex",
+    "crates/crow-macros"
+]
+resolver = "3"
+doctest = false

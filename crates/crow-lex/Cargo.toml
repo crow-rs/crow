@@ -1,0 +1,9 @@
+[package]
+name = "crow-lex"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crow-macros = { path = "../crow-macros" }
+miette = { git = "https://github.com/crow-rs/miette" }
+thiserror = "2.0.18"
