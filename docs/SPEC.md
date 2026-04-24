@@ -68,9 +68,9 @@ enum Dog {
 
 fun bark(dog: Dog) -> str {
   match dog {
-    Bulldog -> "Brr!",
-    Dalmatian -> "Woof!",
-    Husky -> "Brr! Woof!"
+    .Bulldog -> "Brr!",
+    .Dalmatian -> "Woof!",
+    .Husky -> "Brr! Woof!"
   }
 }
 

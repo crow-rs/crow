@@ -31,6 +31,8 @@ pub enum TokenKind {
     Rparen,      // )
     Lbrace,      // {
     Rbrace,      // }
+    Lbracket,    // [
+    Rbracket,    // ]
     Plus,        // +
     Minus,       // -
     Star,        // *
@@ -46,7 +48,7 @@ pub enum TokenKind {
     Gt,          // >
     Lt,          // <
     Colon,       // :
-    Semi,        // ;
+    Arrow,       // ->
     DoubleEq,    // ==
     DoubleBar,   // ||
     DoubleAmp,   // &&

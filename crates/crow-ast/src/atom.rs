@@ -65,6 +65,7 @@ pub enum Lit {
     Float(String),
     String(String),
     Bool(String),
+    None,
 }
 
 /// Represents a type hint (type annotation)

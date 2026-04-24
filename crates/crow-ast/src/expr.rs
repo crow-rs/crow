@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    atom::{BinOp, Lit, UnOp},
+    atom::{BinOp, Lit, Param, UnOp},
     stmt::Stmt,
 };
 use crow_lex::token::Span;
@@ -34,7 +34,7 @@ pub enum PatKind {
     Wildcard,
 
     /// Represents or pattern
-    Or(Box<Pat>, Box<Pat>),
+    Or(Vec<Pat>),
 }
 
 /// Represents pattern
@@ -58,12 +58,6 @@ pub enum ExprKind {
     /// Literal expression
     Lit(Lit),
 
-    /// Represents todo expression (e.g `todo as "simple todo"`)
-    Todo(Option<String>),
-
-    /// Represents panic expression (e.g `panic as "simple panic"`)
-    Panic(Option<String>),
-
     /// Represents unary expression
     Unary(Box<Expr>, UnOp),
 
@@ -80,13 +74,13 @@ pub enum ExprKind {
     Var(String),
 
     /// Represents field access
-    Suffix(Box<Expr>, String),
+    Field(Box<Expr>, String),
 
     /// Represents call expression
     Call(Box<Expr>, Vec<Expr>),
 
     /// Represents anonymous function expression
-    Function(Vec<String>, Box<Expr>),
+    Function(Vec<Param>, Box<Expr>),
 
     /// Represents match expression
     Match(Box<Expr>, Vec<Case>),
@@ -97,8 +91,11 @@ pub enum ExprKind {
     /// Block expression
     Block(Vec<Stmt>),
 
-    /// None expression
-    None,
+    /// Represents todo expression (e.g `todo as "simple todo"`)
+    Todo(Option<Box<Expr>>),
+
+    /// Represents panic expression (e.g `panic as "simple panic"`)
+    Panic(Option<Box<Expr>>),
 }
 
 /// Represents expression

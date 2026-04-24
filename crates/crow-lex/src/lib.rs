@@ -510,6 +510,7 @@ impl<'s> Iterator for Lexer<'s> {
             (Some('!'), Some('=')) => Some(self.advance_twice_with(TokenKind::BangEq, "!=")),
             (Some('>'), Some('=')) => Some(self.advance_twice_with(TokenKind::Ge, ">=")),
             (Some('<'), Some('=')) => Some(self.advance_twice_with(TokenKind::Le, "<=")),
+            (Some('-'), Some('>')) => Some(self.advance_twice_with(TokenKind::Arrow, "->")),
             (Some('_'), _) => Some(self.advance_with(TokenKind::Wildcard, "_")),
             (Some('&'), _) => Some(self.advance_with(TokenKind::Ampersand, "&")),
             (Some('|'), _) => Some(self.advance_with(TokenKind::Bar, "|")),
@@ -527,10 +528,11 @@ impl<'s> Iterator for Lexer<'s> {
             (Some(','), _) => Some(self.advance_with(TokenKind::Comma, ",")),
             (Some('{'), _) => Some(self.advance_with(TokenKind::Lbrace, "{")),
             (Some('}'), _) => Some(self.advance_with(TokenKind::Rbrace, "}")),
+            (Some('['), _) => Some(self.advance_with(TokenKind::Lbracket, "[")),
+            (Some(']'), _) => Some(self.advance_with(TokenKind::Rbracket, "]")),
             (Some('('), _) => Some(self.advance_with(TokenKind::Lparen, "(")),
             (Some(')'), _) => Some(self.advance_with(TokenKind::Rparen, ")")),
             (Some(':'), _) => Some(self.advance_with(TokenKind::Colon, ":")),
-            (Some(';'), _) => Some(self.advance_with(TokenKind::Semi, ";")),
             (Some('"'), _) => Some(self.advance_string()),
             (Some(ch), next) => {
                 if self.is_ascii_digit() {

@@ -40,6 +40,13 @@ version = "0.1.0"
 [[package]]
 name = "crow-parse"
 version = "0.1.0"
+dependencies = [
+ "crow-ast",
+ "crow-lex",
+ "crow-macros",
+ "miette",
+ "thiserror",
+]
 
 [[package]]
 name = "crow-tycheck"
