@@ -372,17 +372,19 @@ impl<'s> Lexer<'s> {
     fn token_kind_for_id(value: &str) -> TokenKind {
         match value {
             "use" => TokenKind::Use,
-            "type" => TokenKind::Type,
+            "struct" => TokenKind::Struct,
+            "enum" => TokenKind::Enum,
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "true" => TokenKind::Bool,
             "false" => TokenKind::Bool,
             "pub" => TokenKind::Pub,
-            "fn" => TokenKind::Fn,
+            "fun" => TokenKind::Fun,
             "match" => TokenKind::Match,
             "as" => TokenKind::As,
             "for" => TokenKind::For,
+            "pure" => TokenKind::Pure,
             _ => TokenKind::Id,
         }
     }

@@ -10,16 +10,18 @@ use std::{
 #[derive(Debug, PartialEq, Copy, Clone, Eq)]
 pub enum TokenKind {
     Use,         // `use` keyword
-    Type,        // `type` keyword
+    Enum,        // `enum` keyword
+    Struct,      // `struct` keywword
     Let,         // `let` keyword
     If,          // `if` keyword
     Else,        // `else` keyword
-    Fn,          // `fn` keyword
+    Fun,         // `fun` keyword
     Match,       // `match` keyword
     Pub,         // `pub` keyword
     As,          // `as` keyword
     For,         // `for` keyword
     None,        // `none` keyword
+    Pure,        // `pure` keyword
     Comma,       // ,
     Dot,         // .
     Lparen,      // (
