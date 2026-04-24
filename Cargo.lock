@@ -9,6 +9,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "crow-ast"
+version = "0.1.0"
+dependencies = [
+ "crow-lex",
+ "miette",
+]
+
+[[package]]
+name = "crow-driver"
+version = "0.1.0"
+
+[[package]]
+name = "crow-gen"
+version = "0.1.0"
+
+[[package]]
 name = "crow-lex"
 version = "0.1.0"
 dependencies = [
@@ -19,6 +35,14 @@ dependencies = [
 
 [[package]]
 name = "crow-macros"
+version = "0.1.0"
+
+[[package]]
+name = "crow-parse"
+version = "0.1.0"
+
+[[package]]
+name = "crow-tycheck"
 version = "0.1.0"
 
 [[package]]

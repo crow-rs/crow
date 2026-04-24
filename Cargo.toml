@@ -1,6 +1,12 @@
 [workspace]
-members = ["crates/crow-lex",
-    "crates/crow-macros"
+members = [
+    "crates/crow-ast",
+    "crates/crow-driver",
+    "crates/crow-gen",
+    "crates/crow-lex",
+    "crates/crow-macros",
+    "crates/crow-parse",
+    "crates/crow-tycheck"
 ]
 resolver = "3"
 doctest = false

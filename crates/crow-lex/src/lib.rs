@@ -385,6 +385,9 @@ impl<'s> Lexer<'s> {
             "as" => TokenKind::As,
             "for" => TokenKind::For,
             "pure" => TokenKind::Pure,
+            "todo" => TokenKind::Todo,
+            "panic" => TokenKind::Panic,
+            "const" => TokenKind::Const,
             _ => TokenKind::Id,
         }
     }

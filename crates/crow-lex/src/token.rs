@@ -22,6 +22,9 @@ pub enum TokenKind {
     For,         // `for` keyword
     None,        // `none` keyword
     Pure,        // `pure` keyword
+    Todo,        // `todo` keyword
+    Panic,       // `panic` keyword
+    Const,       // `const` keyword
     Comma,       // ,
     Dot,         // .
     Lparen,      // (

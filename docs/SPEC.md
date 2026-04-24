@@ -1,8 +1,9 @@
-#### 🍹 Examples
+#### 🎺 Examples
 ```
 use std/io
 use std/result for Result
 use std/option as o
+use std/list
 
 fun greet(name: str) {
   io.println("Hello, " + name)
@@ -14,6 +15,7 @@ fun main() {
 }
 
 fun do_nothing() {
+  # none is just a unit value
   none
 }
 
@@ -53,7 +55,7 @@ pure fun sum(a: int, b: int) -> int {
 fun do_something() {
   #[
     function `sum` is not called, 
-    because `sum` is pure and result is ignored (optimization)
+    because `sum` is pure and result is ignored (compiler will optimize it)
   ]#
   let _ = sum(3, 4) 
 }
@@ -64,11 +66,36 @@ enum Dog {
   Husky
 }
 
-fun bark(dog: Dog) {
+fun bark(dog: Dog) -> str {
   match dog {
     Bulldog -> "Brr!",
     Dalmatian -> "Woof!",
     Husky -> "Brr! Woof!"
   }
 }
+
+fun test() {
+  let a = List()
+  list.push(a, 123)
+  list.push(a, 321)
+  a = list.map(a, fn(a: int) -> a + 1)
+}
+
+native fun print(text: str) = `
+  console.log(text)
+`
+
+fun test2() {
+  print("Hello, world!")
+}
+
+fun unimpl() { 
+  todo as "no implementation yet" 
+} 
+
+fun error() { 
+  panic as "panic occurred" 
+}
+
+const PI = 3.1415
 ```
