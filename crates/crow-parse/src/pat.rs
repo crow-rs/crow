@@ -63,10 +63,8 @@ impl<'s> Parser<'s> {
 
     /// Enum pattern parsing
     fn enum_pat(&mut self) -> Pat {
-        // Bumping `.`
-        let start_span = self.bump().span;
-
         // Parsing enum pattern name
+        let start_span = self.prev().span.clone();
         let id = self.enum_pat_name();
 
         // Checking for unpack postfix

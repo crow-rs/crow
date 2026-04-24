@@ -114,7 +114,7 @@ impl<'s> Parser<'s> {
         let name = self.expect(TokenKind::Id).lexeme;
         let generics = self.generic_params();
         let params = self.params();
-        let ret = if self.check(TokenKind::Colon) {
+        let ret = if self.check(TokenKind::Arrow) {
             self.bump();
             Some(self.type_hint())
         } else {

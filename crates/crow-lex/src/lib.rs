@@ -414,8 +414,7 @@ impl<'s> Lexer<'s> {
 
     /// Skips comment
     fn skip_comment(&mut self) {
-        // //
-        self.advance();
+        // #
         self.advance();
         while self.current != Some('\n') {
             self.advance();
@@ -424,13 +423,13 @@ impl<'s> Lexer<'s> {
 
     /// Skips multiline comment
     fn skip_multiline_comment(&mut self) {
-        // /*
+        // #[
         self.advance();
         self.advance();
-        while !(self.current == Some('*') && self.next == Some('/')) {
+        while !(self.current == Some(']') && self.next == Some('#')) {
             self.advance();
         }
-        // */
+        // ]#
         self.advance();
         self.advance();
     }
@@ -444,16 +443,17 @@ impl<'s> Lexer<'s> {
             }
 
             // Skipping comments
-            if self.current == Some('/') {
-                // Matching next char
-                match self.next {
-                    Some('*') => self.skip_multiline_comment(),
-                    Some('/') => self.skip_comment(),
-                    _ => break,
+            match (self.current, self.next) {
+                (Some('#'), Some('[')) => {
+                    self.skip_multiline_comment();
+                    continue;
                 }
+                (Some('#'), _) => {
+                    self.skip_comment();
+                    continue;
+                }
+                _ => break,
             }
-
-            break;
         }
     }
 

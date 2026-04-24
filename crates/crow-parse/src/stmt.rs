@@ -14,7 +14,11 @@ impl<'s> Parser<'s> {
         // Bumping `let`
         let start_span = self.peek().span.clone();
         self.bump();
-        let name = self.expect(TokenKind::Id).lexeme;
+        let name = if self.check(TokenKind::Wildcard) {
+            self.bump().lexeme
+        } else {
+            self.expect(TokenKind::Id).lexeme
+        };
 
         // Parsing hint
         let hint = if self.check(TokenKind::Colon) {

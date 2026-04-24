@@ -121,6 +121,7 @@ impl<'s> Parser<'s> {
         let body = if self.check(TokenKind::Lbrace) {
             self.block()
         } else {
+            self.expect(TokenKind::Arrow);
             self.expr()
         };
         let end_span = self.prev().span.clone();
@@ -138,7 +139,7 @@ impl<'s> Parser<'s> {
         let pats = self.sep_by_2(TokenKind::Comma, |p| p.pat());
 
         // -> { body, ... }
-        self.expect(TokenKind::Colon);
+        self.expect(TokenKind::Arrow);
         let body = if self.check(TokenKind::Lbrace) {
             self.block()
         } else {

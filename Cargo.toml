@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "crates/crow-ast",
+    "crates/crow-ast", "crates/crow-cli",
     "crates/crow-driver",
     "crates/crow-gen",
     "crates/crow-lex",
