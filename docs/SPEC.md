@@ -78,7 +78,7 @@ fun test() {
   let a = List()
   list.push(a, 123)
   list.push(a, 321)
-  a = list.map(a, fn(a: int) -> a + 1)
+  a = list.map(a, fun(a: int) -> a + 1)
 }
 
 native fun print(text: str) = `

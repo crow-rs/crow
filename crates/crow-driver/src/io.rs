@@ -1,15 +1,15 @@
 /// Imports
 use camino::Utf8PathBuf;
+use crow_macros::bail;
 use miette::Diagnostic;
 use std::{fs, path::PathBuf};
 use thiserror::Error;
 use walkdir::WalkDir;
-use crow_macros::bail;
 
 /// IO error
 #[derive(Debug, Error, Diagnostic)]
 pub enum IoError {
-    #[error("failed to read watt file: {path}.")]
+    #[error("failed to read crow file: {path}.")]
     #[diagnostic(code(io::failed_to_read))]
     FailedToRead { path: Utf8PathBuf },
     #[error("failed to write in file: {path}.")]
@@ -25,7 +25,7 @@ pub enum IoError {
     #[diagnostic(
         code(io::entry_error),
         help("please, file an issue on github."),
-        url("https://github.com/watt-rs/watt")
+        url("https://github.com/crow-rs/crow")
     )]
     EntryError { path: Utf8PathBuf },
     #[error("failed to convert PathBuf of: {path} to Utf8PathBuf.")]
@@ -38,7 +38,7 @@ pub enum IoError {
     #[diagnostic(
         code(io::failed_to_convert_path_buf_to_utf8_path_buf),
         help("please, file an issue on github."),
-        url("https://github.com/watt-rs/watt")
+        url("https://github.com/crow-rs/crow")
     )]
     FailedToStripPrefix {
         path: Utf8PathBuf,
@@ -82,7 +82,7 @@ pub fn collect_sources(path: &Utf8PathBuf) -> Vec<Utf8PathBuf> {
         let entry_path = e.path();
         if entry_path.is_file() {
             match entry_path.extension() {
-                Some(ext) => ext == "wt",
+                Some(ext) => ext == "cw",
                 None => false,
             }
         } else {

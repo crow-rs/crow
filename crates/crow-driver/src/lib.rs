@@ -179,6 +179,8 @@ impl Driver {
 
     /// Performs compilation
     pub fn perform_compilation(&mut self) {
+        println!("⌛ Compiling...");
+
         // Loading modules
         info!(
             "starting compilation of `{}` with outcome `{}`",
@@ -194,5 +196,7 @@ impl Driver {
         info!("performing toposort...");
         let sorted = self.perform_toposort(dep_tree);
         info!("performed toposort: {sorted:#?}");
+
+        println!("✨ Done!");
     }
 }

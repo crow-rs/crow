@@ -9,3 +9,5 @@ crow-lex = { path = "../crow-lex" }
 crow-driver = { path = "../crow-driver" }
 miette = { git = "https://github.com/crow-rs/miette", features = ["fancy"] }
 camino = "1.2.2"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
