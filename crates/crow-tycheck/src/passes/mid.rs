@@ -121,7 +121,7 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Performs mid analysis of module
-    pub fn mid_phase(&mut self, module: &Module) {
+    pub fn mid_pass(&mut self, module: &Module) {
         // Iterating over module items
         for item in &module.items {
             // Matching item kind

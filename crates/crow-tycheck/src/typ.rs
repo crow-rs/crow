@@ -33,7 +33,7 @@ pub enum Typ {
     FunRef(Box<Typ>, Vec<Typ>),
     Fun(Id<Function>, Vec<Typ>),
 
-    /// Algebraic data type
+    /// Algebraic data types
     Struct(Id<Struct>, Vec<Typ>),
     Enum(Id<Enum>, Vec<Typ>),
 

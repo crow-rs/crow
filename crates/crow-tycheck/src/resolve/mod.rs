@@ -12,6 +12,7 @@ use id_arena::Id;
 use std::collections::HashMap;
 
 /// Defines a resolver
+#[derive(Default)]
 pub struct Resolver {
     /// Scopes (ribs) stack
     ribs: RibsStack,

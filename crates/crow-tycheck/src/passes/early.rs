@@ -56,7 +56,7 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Performs early analysis of module
-    pub fn early_phase(&mut self, module: &Module) {
+    pub fn early_pass(&mut self, module: &Module) {
         // Iterating over module items
         for item in &module.items {
             // Matching item kind
