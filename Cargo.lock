@@ -123,6 +123,7 @@ dependencies = [
  "crow-lex",
  "crow-macros",
  "crow-parse",
+ "crow-tycheck",
  "miette",
  "petgraph",
  "rayon",

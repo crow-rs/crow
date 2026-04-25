@@ -9,6 +9,7 @@ crow-parse = { path = "../crow-parse" }
 crow-lex = { path = "../crow-lex" }
 crow-macros = { path = "../crow-macros" }
 crow-ast = { path = "../crow-ast" }
+crow-tycheck = { path = "../crow-tycheck" }
 miette = { git = "https://github.com/crow-rs/miette", features = ["fancy"] }
 tracing = "0.1.44"
 petgraph = "0.8.3"

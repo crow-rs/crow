@@ -149,7 +149,20 @@ impl<'tx> CheckCtxt<'tx> {
                         .map(|_| Typ::Var(self.fresh()))
                         .collect(),
                 ),
-                Some(Def::Variant(id, name)) => Typ::Meta(Meta::Variant(id, name)),
+                Some(Def::Variant(id, idx)) => {
+                    let en = self.tx.get_enum(id);
+                    let variant = en.variants[idx].clone();
+                    if variant.fields.is_empty() {
+                        Typ::Enum(
+                            id,
+                            (0..en.generics.len())
+                                .map(|_| Typ::Var(self.fresh()))
+                                .collect(),
+                        )
+                    } else {
+                        Typ::Meta(Meta::Variant(id, idx))
+                    }
+                }
                 // Module definition
                 None => match self.resolver.resolve_mod(&name) {
                     Some(m) => Typ::Meta(Meta::Module(m)),
@@ -205,7 +218,7 @@ impl<'tx> CheckCtxt<'tx> {
         let en = self.tx.get_enum(id);
         match en.variants.iter().enumerate().find(|(_, v)| v.name == name) {
             // Variant with some fields => meta variant type
-            Some((idx, variant)) if variant.fields.is_empty() => Typ::Meta(Meta::Variant(id, idx)),
+            Some((idx, variant)) if !variant.fields.is_empty() => Typ::Meta(Meta::Variant(id, idx)),
             // Variant without any fields => enum type
             Some((_, _)) => Typ::Enum(
                 id,
@@ -441,7 +454,7 @@ impl<'tx> CheckCtxt<'tx> {
             params
                 .into_iter()
                 .zip(args)
-                .map(|(f, a)| self.coerce(&span, f, a));
+                .for_each(|(f, a)| self.coerce(&span, f, a));
         } else {
             emit!(
                 self,

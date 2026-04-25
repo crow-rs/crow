@@ -1,4 +1,4 @@
-mod ctxt;
+pub mod ctxt;
 mod def;
 mod errors;
 mod infer;

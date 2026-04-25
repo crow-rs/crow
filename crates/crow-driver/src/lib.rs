@@ -9,6 +9,10 @@ use crow_ast::item;
 use crow_lex::Lexer;
 use crow_macros::{bail, bug};
 use crow_parse::Parser;
+use crow_tycheck::ctxt::{
+    check::CheckCtxt,
+    typ::{self, TypCtxt},
+};
 use miette::NamedSource;
 use petgraph::{Direction, prelude::DiGraphMap};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -196,6 +200,16 @@ impl Driver {
         info!("performing toposort...");
         let sorted = self.perform_toposort(dep_tree);
         info!("performed toposort: {sorted:#?}");
+
+        // Performing typecheck
+        info!("performing typecheck...");
+        let mut typ_ctxt = TypCtxt::new();
+        for name in sorted {
+            info!("typechecking `{name}`");
+            let module = loaded_modules.get(name).unwrap().clone();
+            let mut ctxt = CheckCtxt::new(&mut typ_ctxt);
+            ctxt.solve(module);
+        }
 
         println!("✨ Done!");
     }
