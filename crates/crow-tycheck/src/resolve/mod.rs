@@ -49,7 +49,7 @@ impl Resolver {
 
     /// Exits ribs scope
     pub fn exit_scope(&mut self) {
-        self.ribs.push();
+        self.ribs.pop();
     }
 
     /// Resolves module-level def

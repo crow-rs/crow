@@ -7,7 +7,7 @@ use crow_macros::bug;
 use id_arena::{Arena, Id};
 
 /// Represents types context that stores all the types info
-pub struct TypCtxt {
+pub struct TypesCtxt {
     /// Arenas for definitions
     pub structs: Arena<Struct>,
     pub enums: Arena<Enum>,
@@ -21,7 +21,7 @@ pub struct TypCtxt {
 }
 
 /// Implementation
-impl TypCtxt {
+impl TypesCtxt {
     pub fn new() -> Self {
         Self {
             structs: Arena::new(),

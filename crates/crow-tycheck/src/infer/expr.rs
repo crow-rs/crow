@@ -94,7 +94,10 @@ impl<'tx> SolveCtxt<'tx> {
             // Concat operator
             (BinOp::Concat, Typ::Str, Typ::Str) => Typ::Str,
             // Equality operators
-            (BinOp::Eq, a, b) | (BinOp::Ne, a, b) if a == b => Typ::Bool,
+            (BinOp::Eq, a, b) | (BinOp::Ne, a, b) => {
+                self.coerce(&span, a, b);
+                Typ::Bool
+            }
             // Other
             (op, a, b) => {
                 emit!(

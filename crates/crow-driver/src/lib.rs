@@ -11,7 +11,7 @@ use crow_macros::{bail, bug};
 use crow_parse::Parser;
 use crow_tycheck::ctxt::{
     check::SolveCtxt,
-    typ::{self, TypCtxt},
+    typ::{self, TypesCtxt},
 };
 use miette::NamedSource;
 use petgraph::{Direction, prelude::DiGraphMap};
@@ -203,11 +203,11 @@ impl Driver {
 
         // Performing typecheck
         info!("performing typecheck...");
-        let mut typ_ctxt = TypCtxt::new();
+        let mut types_ctxt = TypesCtxt::new();
         for name in sorted {
             info!("typechecking `{name}`");
             let module = loaded_modules.get(name).unwrap().clone();
-            let mut ctxt = SolveCtxt::new(&mut typ_ctxt);
+            let mut ctxt = SolveCtxt::new(&mut types_ctxt);
             ctxt.solve(module);
         }
 

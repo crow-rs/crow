@@ -1,11 +1,11 @@
 /// Imports
-use crate::{ctxt::typ::TypCtxt, resolve::Resolver};
+use crate::{ctxt::typ::TypesCtxt, resolve::Resolver};
 use crow_ast::item::Module;
 
 /// Module checking context used during module typechecking
 pub struct SolveCtxt<'tx> {
     /// Types context
-    pub(crate) tx: &'tx mut TypCtxt,
+    pub(crate) tx: &'tx mut TypesCtxt,
 
     /// Definitions env
     pub(crate) resolver: Resolver,
@@ -17,7 +17,7 @@ pub struct SolveCtxt<'tx> {
 /// Implementation
 impl<'tx> SolveCtxt<'tx> {
     /// Creates new check context
-    pub fn new(tx: &'tx mut TypCtxt) -> Self {
+    pub fn new(tx: &'tx mut TypesCtxt) -> Self {
         Self {
             tx,
             resolver: Resolver::default(),
