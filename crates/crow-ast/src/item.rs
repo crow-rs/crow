@@ -73,7 +73,7 @@ pub struct Fun {
     pub name: String,
     pub generics: Vec<String>,
     pub params: Vec<Param>,
-    pub ret: Option<TypeHint>,
+    pub ret: TypeHint,
     pub block: Expr,
 }
 
@@ -84,7 +84,7 @@ pub struct NativeFun {
     pub name: String,
     pub generics: Vec<String>,
     pub params: Vec<Param>,
-    pub ret: Option<TypeHint>,
+    pub ret: TypeHint,
     pub body: String,
 }
 

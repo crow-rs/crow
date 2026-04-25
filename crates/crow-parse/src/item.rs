@@ -1,7 +1,7 @@
 /// Imports
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
-    atom::{Publicity, Purity},
+    atom::{Publicity, Purity, TypeHint},
     item::{Enum, Field, Fun, Item, ItemKind, Struct, Use, UseKind, UsePath, Variant},
 };
 use crow_lex::token::TokenKind;
@@ -116,9 +116,9 @@ impl<'s> Parser<'s> {
         let params = self.params();
         let ret = if self.check(TokenKind::Arrow) {
             self.bump();
-            Some(self.type_hint())
+            self.type_hint()
         } else {
-            None
+            TypeHint::Infer
         };
 
         // Parsing body

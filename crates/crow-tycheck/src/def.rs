@@ -2,6 +2,7 @@
 use crate::typ::Typ;
 use crow_ast::atom::Publicity;
 use id_arena::Id;
+use std::collections::HashMap;
 
 /// Represents struct field
 pub struct Field {
@@ -26,13 +27,7 @@ pub struct Variant {
 pub struct Enum {
     pub name: String,
     pub generics: Vec<String>,
-    pub fields: Vec<Variant>,
-}
-
-/// Defines an algebraic data type
-pub enum Adt {
-    Enum(Enum),
-    Struct(Struct),
+    pub variants: Vec<Variant>,
 }
 
 /// Defines a function in the type system
@@ -43,8 +38,10 @@ pub struct Function {
 }
 
 /// Represents definition
+#[derive(Clone)]
 pub enum Def {
-    Adt(Id<Adt>),
+    Struct(Id<Struct>),
+    Enum(Id<Enum>),
     Function(Id<Function>),
     Const(Typ),
 }
@@ -55,5 +52,5 @@ pub type ModDef = (Publicity, Def);
 /// Defines a module in the type system
 pub struct Module {
     pub name: String,
-    pub defs: Vec<ModDef>,
+    pub defs: HashMap<String, ModDef>,
 }

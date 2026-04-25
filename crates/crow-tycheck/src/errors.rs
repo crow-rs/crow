@@ -1,29 +1,8 @@
+use crow_ast::atom::{BinOp, UnOp};
 /// Imports
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use std::sync::Arc;
 use thiserror::Error;
-
-/// Typechecking related
-#[derive(Debug, Error, Diagnostic)]
-pub(crate) enum TypeckRelated {
-    #[error("here...")]
-    #[diagnostic(severity(hint))]
-    Here {
-        #[source_code]
-        src: Arc<NamedSource<String>>,
-        #[label()]
-        span: SourceSpan,
-    },
-    #[error("this type is {t:?}")]
-    #[diagnostic(severity(hint))]
-    ThisType {
-        #[source_code]
-        src: Arc<NamedSource<String>>,
-        #[label()]
-        span: SourceSpan,
-        t: String,
-    },
-}
 
 /// Typechecking error
 #[derive(Debug, Error, Diagnostic)]
@@ -31,8 +10,10 @@ pub(crate) enum TypeckError {
     #[error("types missmatch. expected `{expected}`, got `{got}`.")]
     #[diagnostic(code(typeck::types_missmatch))]
     TypesMissmatch {
-        #[related]
-        related: Vec<TypeckRelated>,
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("here...")]
+        span: SourceSpan,
         expected: String,
         got: String,
     },
@@ -42,9 +23,78 @@ pub(crate) enum TypeckError {
         help("types recursion is not supported.")
     )]
     RecursiveType {
-        #[related]
-        related: Vec<TypeckRelated>,
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("found during occurs check here...")]
+        span: SourceSpan,
         t: String,
+    },
+    #[error("arity missmatch. expected {expected}, got {got}")]
+    #[diagnostic(code(typeck::arity_missmatch))]
+    ArityMissmatch {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("here...")]
+        span: SourceSpan,
+        expected: usize,
+        got: usize,
+    },
+    #[error("name `{name}` is defined multiple times")]
+    #[diagnostic(code(typeck::mod_def_redefinition))]
+    ModDefRedefinition {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("redeclaration here...")]
+        span: SourceSpan,
+        name: String,
+    },
+    #[error("type `{name}` is not defined")]
+    #[diagnostic(code(typeck::undefined_type))]
+    UndefinedType {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("access here...")]
+        span: SourceSpan,
+        name: String,
+    },
+    #[error("type `{name}` is private")]
+    #[diagnostic(code(typeck::private_type))]
+    PrivateType {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("access here...")]
+        span: SourceSpan,
+        name: String,
+    },
+    #[error("module `{name}` is not defined")]
+    #[diagnostic(code(typeck::undefined_mod))]
+    UndefinedMod {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("access here...")]
+        span: SourceSpan,
+        name: String,
+    },
+    #[error("invalid binary operation `{op:?}` on types `{a}` & `{b}`.")]
+    #[diagnostic(code(typeck::invalid_bin_op))]
+    InvalidBinOp {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("this binary operation is incorrect.")]
+        span: SourceSpan,
+        a: String,
+        b: String,
+        op: BinOp,
+    },
+    #[error("invalid unary operation `{op:?}` on type `{t}`.")]
+    #[diagnostic(code(typeck::invalid_un_op))]
+    InvalidUnOp {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("this unary operation is incorrect.")]
+        span: SourceSpan,
+        t: String,
+        op: UnOp,
     },
 }
 

@@ -1,30 +1,44 @@
 /// Imports
 use crate::{
     ctxt::check::CheckCtxt,
-    errors::{TypeckError, TypeckRelated},
+    errors::TypeckError,
     typ::{Meta, Typ, Var},
 };
 use crow_lex::token::Span;
-use crow_macros::{bail, bug};
+use crow_macros::emit;
 use id_arena::Id;
 
 /// Unification error
 #[derive(Clone)]
 pub enum UnifyError {
-    TypesMissmatch,
-    RecursiveType,
-}
-
-/// Unification origin
-#[derive(Clone)]
-pub struct Origin {
-    pub t1: Typ,
-    pub t2: Typ,
-    pub span: Span,
+    Mismatch,
+    Occurs,
 }
 
 /// Implementation of coercion solving
 impl<'tx> CheckCtxt<'tx> {
+    /// Generates fresh type variable
+    pub fn fresh(&mut self) -> Id<Var> {
+        self.tx.insert_var(Var::Unbound)
+    }
+
+    /// Applies all the substitutions by replacing
+    /// type variables with concrete types
+    pub fn apply(&mut self, typ: Typ) -> Typ {
+        match typ {
+            Typ::Fun(id, args) => Typ::Fun(id, args.into_iter().map(|a| self.apply(a)).collect()),
+            Typ::Struct(id, args) => {
+                Typ::Struct(id, args.into_iter().map(|a| self.apply(a)).collect())
+            }
+            Typ::Enum(id, args) => Typ::Enum(id, args.into_iter().map(|a| self.apply(a)).collect()),
+            Typ::Var(id) => match self.tx.get_var(id) {
+                Var::Unbound => Typ::Var(id),
+                Var::Bound(typ) => typ.clone(),
+            },
+            other => other,
+        }
+    }
+
     /// Binds type variable `id` to `ty` if it is still unbound.
     pub fn subst(&mut self, id: Id<Var>, typ: Typ) {
         let var = self.tx.get_var_mut(id);
@@ -66,25 +80,23 @@ impl<'tx> CheckCtxt<'tx> {
     pub fn coerce(&mut self, span: &Span, a: Typ, b: Typ) {
         if let Err(err) = self.unify(a.clone(), b.clone()) {
             match err {
-                UnifyError::TypesMissmatch => {
-                    bail!(TypeckError::TypesMissmatch {
-                        related: vec![TypeckRelated::Here {
-                            src: span.0.clone(),
-                            span: span.1.clone().into(),
-                        }],
+                UnifyError::Mismatch => emit!(
+                    self,
+                    TypeckError::TypesMissmatch {
+                        src: span.0.clone(),
+                        span: span.1.clone().into(),
                         expected: self.pretty(&a),
-                        got: self.pretty(&b)
-                    })
-                }
-                UnifyError::RecursiveType => {
-                    bail!(TypeckError::RecursiveType {
-                        related: vec![TypeckRelated::Here {
-                            src: span.0.clone(),
-                            span: span.1.clone().into(),
-                        }],
+                        got: self.pretty(&b),
+                    }
+                ),
+                UnifyError::Occurs => emit!(
+                    self,
+                    TypeckError::RecursiveType {
+                        src: span.0.clone(),
+                        span: span.1.clone().into(),
                         t: self.pretty(&a),
-                    })
-                }
+                    }
+                ),
             }
         }
     }
@@ -164,7 +176,7 @@ impl<'tx> CheckCtxt<'tx> {
             (Typ::Var(a), b) | (b, Typ::Var(a)) => self.unify_var(a, b),
 
             // Other -> error
-            (_, _) => Err(UnifyError::TypesMissmatch),
+            (_, _) => Err(UnifyError::Mismatch),
         }
     }
 
@@ -178,7 +190,7 @@ impl<'tx> CheckCtxt<'tx> {
             Var::Unbound => {
                 // Performing occurs check: restricts infinite types like `T = Vec<T>`
                 if self.occurs(id, &ty) {
-                    Err(UnifyError::RecursiveType)
+                    Err(UnifyError::Occurs)
                 } else {
                     self.subst(id, ty);
                     Ok(())
@@ -212,10 +224,10 @@ impl<'tx> CheckCtxt<'tx> {
     /// Returns human-readable type representation
     pub fn pretty(&self, ty: &Typ) -> String {
         match ty {
-            Typ::Int => "Int".to_string(),
-            Typ::Float => "Float".to_string(),
-            Typ::Bool => "Bool".to_string(),
-            Typ::Str => "Str".to_string(),
+            Typ::Int => "int".to_string(),
+            Typ::Float => "float".to_string(),
+            Typ::Bool => "bool".to_string(),
+            Typ::Str => "str".to_string(),
             Typ::Unit => "()".to_string(),
             Typ::Var(_) => "_".to_string(),
             Typ::Generic(name, _) => name.to_string(),

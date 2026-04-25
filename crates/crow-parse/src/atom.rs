@@ -69,7 +69,7 @@ impl<'s> Parser<'s> {
             let args = self.generic_args();
             let end_span = self.prev().span.clone();
 
-            TypeHint::Module {
+            TypeHint::Mod {
                 span: start_span + end_span,
                 module: id,
                 name: name,
@@ -112,7 +112,7 @@ impl<'s> Parser<'s> {
         };
         let end_span = self.prev().span.clone();
 
-        TypeHint::Function {
+        TypeHint::Fun {
             span: start_span + end_span,
             params,
             ret,

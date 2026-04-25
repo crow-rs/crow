@@ -22,7 +22,7 @@ pub enum BinOp {
     Sub,    // `-`
     Mul,    // `*`
     Div,    // `/`
-    Mod,    // `%`
+    Rem,    // `%`
     Eq,     // `==`
     Ne,     // `!=`
     Gt,     // `>`
@@ -83,7 +83,7 @@ pub enum TypeHint {
     /// let a: a.B = a.B()
     ///        ^^^
     ///        this
-    Module {
+    Mod {
         span: Span,
         module: String,
         name: String,
@@ -93,7 +93,7 @@ pub enum TypeHint {
     /// let a: fn(int, int) -> int = ...
     ///        ^^^^^^^^^^^^^^^^^^^
     ///               this
-    Function {
+    Fun {
         span: Span,
         params: Vec<TypeHint>,
         ret: Box<TypeHint>,

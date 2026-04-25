@@ -6,6 +6,9 @@ pub struct CheckCtxt<'tx> {
     /// Types context
     pub(crate) tx: &'tx mut TypCtxt,
 
-    /// Definitions resolver
+    /// Definitions env
     pub(crate) resolver: Resolver,
+
+    /// Does checker has error?
+    pub(crate) has_error: bool,
 }

@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    def::{Enum, Function, Struct},
+    def::{Enum, Function, Module, Struct},
     typ::Var,
 };
 use crow_macros::bug;
@@ -12,6 +12,9 @@ pub struct TypCtxt {
     pub structs: Arena<Struct>,
     pub enums: Arena<Enum>,
     pub functions: Arena<Function>,
+
+    /// Modules arena
+    pub mods: Arena<Module>,
 
     /// Type variables arena
     pub vars: Arena<Var>,
@@ -25,6 +28,7 @@ impl TypCtxt {
             enums: Arena::new(),
             functions: Arena::new(),
             vars: Arena::new(),
+            mods: Arena::new(),
         }
     }
 
@@ -102,5 +106,24 @@ impl TypCtxt {
         self.vars
             .get_mut(id)
             .unwrap_or_else(|| bug!(format!("var not found: {:?}", id)))
+    }
+
+    /// Inserts module
+    pub fn insert_mod(&mut self, s: Module) -> Id<Module> {
+        self.mods.alloc(s)
+    }
+
+    /// Returns ref to module
+    pub fn get_mod(&self, id: Id<Module>) -> &Module {
+        self.mods
+            .get(id)
+            .unwrap_or_else(|| bug!(format!("module not found: {:?}", id)))
+    }
+
+    /// Returns mutable ref to struct
+    pub fn get_mod_mut(&mut self, id: Id<Module>) -> &mut Module {
+        self.mods
+            .get_mut(id)
+            .unwrap_or_else(|| bug!(format!("module not found: {:?}", id)))
     }
 }

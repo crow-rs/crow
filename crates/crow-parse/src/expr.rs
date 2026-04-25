@@ -312,7 +312,7 @@ impl<'s> Parser<'s> {
             let op = match self.bump().kind {
                 TokenKind::Star => BinOp::Mul,
                 TokenKind::Slash => BinOp::Div,
-                TokenKind::Percent => BinOp::Mod,
+                TokenKind::Percent => BinOp::Rem,
                 _ => unreachable!(),
             };
 
