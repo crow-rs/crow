@@ -1,7 +1,7 @@
 /// Imports
 use crate::{
     ctxt::check::CheckCtxt,
-    def::{Def, Field, Function, Variant},
+    def::{Def, Function},
 };
 use crow_ast::{
     atom::Publicity,
@@ -26,10 +26,7 @@ impl<'tx> CheckCtxt<'tx> {
                 self.tx.get_struct_mut(id).fields = s
                     .fields
                     .iter()
-                    .map(|f| Field {
-                        name: f.name.clone(),
-                        typ: self.infer_type_hint(f.hint.clone()),
-                    })
+                    .map(|f| (f.name.clone(), self.infer_type_hint(f.hint.clone())))
                     .collect()
             }
             _ => unreachable!(),
@@ -40,7 +37,7 @@ impl<'tx> CheckCtxt<'tx> {
     /// Performs mid analysis of struct:
     /// - infers types of all the fields in all the variants
     /// - prepares all the variants
-    pub fn mid_analyze_enum(&mut self, e: &Enum) {
+    pub fn mid_analyze_enum(&mut self, p: Publicity, e: &Enum) {
         // Getting enum def
         self.resolver.enter_generics(e.generics.clone());
         match self
@@ -48,20 +45,29 @@ impl<'tx> CheckCtxt<'tx> {
             .resolve_mod_def(&e.name)
             .expect("enum should exists after early analysis")
         {
-            // Updating definition
             Def::Enum(id) => {
+                // Updating definition
                 self.tx.get_enum_mut(id).variants = e
                     .variants
                     .iter()
-                    .map(|v| Variant {
-                        name: v.name.clone(),
-                        fields: v
-                            .fields
-                            .iter()
-                            .map(|hint| self.infer_type_hint(hint.clone()))
-                            .collect(),
+                    .map(|v| {
+                        (
+                            v.name.clone(),
+                            v.fields
+                                .iter()
+                                .map(|hint| self.infer_type_hint(hint.clone()))
+                                .collect(),
+                        )
                     })
-                    .collect()
+                    .collect();
+
+                // Defining variant constructors
+                for variant in &e.variants {
+                    self.resolver.declare_mod_def(
+                        &variant.name,
+                        (p, Def::Variant(id, variant.name.clone())),
+                    );
+                }
             }
             _ => unreachable!(),
         }
@@ -76,6 +82,7 @@ impl<'tx> CheckCtxt<'tx> {
         self.resolver.enter_generics(f.generics.clone());
         let def = Function {
             name: f.name.clone(),
+            generics: f.generics.clone(),
             params: f
                 .params
                 .iter()
@@ -97,6 +104,7 @@ impl<'tx> CheckCtxt<'tx> {
         self.resolver.enter_generics(f.generics.clone());
         let def = Function {
             name: f.name.clone(),
+            generics: f.generics.clone(),
             params: f
                 .params
                 .iter()
@@ -118,7 +126,7 @@ impl<'tx> CheckCtxt<'tx> {
             match &item.kind {
                 // Processing struct and enum
                 ItemKind::Struct(s) => self.mid_analyze_struct(s),
-                ItemKind::Enum(e) => self.mid_analyze_enum(e),
+                ItemKind::Enum(e) => self.mid_analyze_enum(item.publicity, e),
                 // Processing functions
                 ItemKind::Fun(f) => self.mid_analyze_fun(item.publicity, f),
                 ItemKind::Native(n) => self.mid_analyze_native_fun(item.publicity, n),

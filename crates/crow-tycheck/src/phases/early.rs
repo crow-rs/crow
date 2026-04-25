@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 /// Implementation
 use crate::{
     ctxt::check::CheckCtxt,
@@ -21,7 +23,7 @@ impl<'tx> CheckCtxt<'tx> {
             Def::Struct(self.tx.insert_struct(def::Struct {
                 name: s.name.clone(),
                 generics: s.generics.clone(),
-                fields: Vec::new(),
+                fields: HashMap::new(),
             })),
         );
         if !self.resolver.declare_mod_def(&s.name, def) {
@@ -41,7 +43,7 @@ impl<'tx> CheckCtxt<'tx> {
             Def::Enum(self.tx.insert_enum(def::Enum {
                 name: e.name.clone(),
                 generics: e.generics.clone(),
-                variants: Vec::new(),
+                variants: HashMap::new(),
             })),
         );
         if !self.resolver.declare_mod_def(&e.name, def) {

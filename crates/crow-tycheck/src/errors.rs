@@ -57,6 +57,43 @@ pub(crate) enum TypeckError {
         span: SourceSpan,
         name: String,
     },
+    #[error("name `{name}` is not defined")]
+    #[diagnostic(code(typeck::undefined_name))]
+    UndefinedName {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("access here...")]
+        span: SourceSpan,
+        name: String,
+    },
+    #[error("field `{name}` is not defined")]
+    #[diagnostic(code(typeck::undefined_field))]
+    UndefinedField {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("access here...")]
+        span: SourceSpan,
+        name: String,
+    },
+    #[error("`{typ}` is not callable")]
+    #[diagnostic(code(typeck::non_callable))]
+    NonCallable {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("access here...")]
+        span: SourceSpan,
+        typ: String,
+    },
+    #[error("field `{name}` in module `{module}` is private")]
+    #[diagnostic(code(typeck::private_mod_field))]
+    PrivateModField {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("access here...")]
+        span: SourceSpan,
+        name: String,
+        module: String,
+    },
     #[error("type `{name}` is private")]
     #[diagnostic(code(typeck::private_type))]
     PrivateType {
