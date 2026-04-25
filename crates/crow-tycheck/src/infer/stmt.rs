@@ -32,4 +32,21 @@ impl<'tx> CheckCtxt<'tx> {
             StmtKind::Expr(expr) => self.infer_expr(expr),
         }
     }
+
+    /// Infers block
+    pub fn infer_block(&mut self, mut block: Vec<Stmt>) -> Typ {
+        // Getting last statement
+        let last = block.pop();
+
+        // Iterating over statements
+        for stmt in block {
+            self.infer_stmt(stmt);
+        }
+
+        // Matching last statement
+        match last {
+            Some(stmt) => self.infer_stmt(stmt),
+            None => Typ::Unit,
+        }
+    }
 }

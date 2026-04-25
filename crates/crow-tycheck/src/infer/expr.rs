@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 /// Imports
 use crate::{
     ctxt::check::CheckCtxt,
-    def::{Def, Enum, Function, Module, Struct},
+    def::{Def, Enum, Function, Module, Struct, Variant},
     errors::TypeckError,
     typ::{Meta, Typ},
 };
@@ -179,8 +177,15 @@ impl<'tx> CheckCtxt<'tx> {
         args: Vec<Typ>,
         name: String,
     ) -> Typ {
-        match self.tx.get_struct(id).fields.get(&name).cloned() {
-            Some(typ) => self.instantiate(typ, &args),
+        match self
+            .tx
+            .get_struct(id)
+            .fields
+            .iter()
+            .find(|f| f.name == name)
+            .clone()
+        {
+            Some(field) => self.instantiate(field.typ.clone(), &args),
             None => {
                 emit!(
                     self,
@@ -198,11 +203,11 @@ impl<'tx> CheckCtxt<'tx> {
     /// Infers enum field expression
     fn infer_meta_enum_field(&mut self, span: Span, id: Id<Enum>, name: String) -> Typ {
         let en = self.tx.get_enum(id);
-        match en.variants.get(&name) {
+        match en.variants.iter().enumerate().find(|(_, v)| v.name == name) {
             // Variant with some fields => meta variant type
-            Some(fields) if fields.len() > 0 => Typ::Meta(Meta::Variant(id, name)),
+            Some((idx, variant)) if variant.fields.is_empty() => Typ::Meta(Meta::Variant(id, idx)),
             // Variant without any fields => enum type
-            Some(_) => Typ::Enum(
+            Some((_, _)) => Typ::Enum(
                 id,
                 (0..en.generics.len())
                     .map(|_| Typ::Var(self.fresh()))
@@ -238,7 +243,7 @@ impl<'tx> CheckCtxt<'tx> {
                             .collect(),
                     ),
                     Def::Const(typ) => typ.clone(),
-                    Def::Variant(id, name) => Typ::Meta(Meta::Variant(*id, name.clone())),
+                    Def::Variant(id, idx) => Typ::Meta(Meta::Variant(*id, *idx)),
                 };
                 match publicity {
                     Publicity::Pub => typ,
@@ -369,7 +374,7 @@ impl<'tx> CheckCtxt<'tx> {
     /// Infers struct call
     fn infer_struct_call(&mut self, span: Span, id: Id<Struct>, args: Vec<Typ>) -> Typ {
         // Getting struct info
-        let (generics_len, fields): (usize, HashMap<_, _>) = {
+        let (generics_len, fields): (usize, Vec<_>) = {
             let s = self.tx.get_struct(id);
             (s.generics.len(), s.fields.clone())
         };
@@ -377,26 +382,26 @@ impl<'tx> CheckCtxt<'tx> {
         // Preparing generic args
         let generic_args = (0..generics_len).map(|_| Typ::Var(self.fresh())).collect();
 
-        // Instantiating fields
-        let fields = fields
-            .values()
-            .map(|f| self.instantiate(f.clone(), &generic_args))
+        // Instantiating field types
+        let params = fields
+            .into_iter()
+            .map(|f| self.instantiate(f.typ, &generic_args))
             .collect::<Vec<Typ>>();
 
         // Checking arity
-        if fields.len() == args.len() {
+        if params.len() == args.len() {
             // Checking fields and args types equality
-            fields
+            params
                 .into_iter()
                 .zip(args)
-                .map(|(f, a)| self.coerce(&span, f, a));
+                .for_each(|(p, a)| self.coerce(&span, p, a));
         } else {
             emit!(
                 self,
                 TypeckError::ArityMissmatch {
                     src: span.0,
                     span: span.1.into(),
-                    expected: fields.len(),
+                    expected: params.len(),
                     got: args.len()
                 }
             );
@@ -411,28 +416,29 @@ impl<'tx> CheckCtxt<'tx> {
         &mut self,
         span: Span,
         id: Id<Enum>,
-        variant: String,
+        variant: usize,
         args: Vec<Typ>,
     ) -> Typ {
         // Getting enum and variant info
-        let (generics_len, variant): (usize, Vec<Typ>) = {
+        let (generics_len, variant): (usize, Variant) = {
             let e = self.tx.get_enum(id);
-            (e.generics.len(), e.variants.get(&variant).cloned().unwrap())
+            (e.generics.len(), e.variants.get(variant).cloned().unwrap())
         };
 
         // Preparing generic args
         let generic_args = (0..generics_len).map(|_| Typ::Var(self.fresh())).collect();
 
         // Instantiating variant fields
-        let fields = variant
+        let params = variant
+            .fields
             .iter()
             .map(|f| self.instantiate(f.clone(), &generic_args))
             .collect::<Vec<Typ>>();
 
         // Checking arity
-        if fields.len() == args.len() {
-            // Checking fields and args types equality
-            fields
+        if params.len() == args.len() {
+            // Checking params and args types equality
+            params
                 .into_iter()
                 .zip(args)
                 .map(|(f, a)| self.coerce(&span, f, a));
@@ -442,7 +448,7 @@ impl<'tx> CheckCtxt<'tx> {
                 TypeckError::ArityMissmatch {
                     src: span.0,
                     span: span.1.into(),
-                    expected: fields.len(),
+                    expected: params.len(),
                     got: args.len()
                 }
             );
@@ -470,7 +476,7 @@ impl<'tx> CheckCtxt<'tx> {
             // Struct call
             Typ::Meta(Meta::Struct(id)) => self.infer_struct_call(span, id, args),
             // Enum variant call
-            Typ::Meta(Meta::Variant(id, name)) => self.infer_variant_call(span, id, name, args),
+            Typ::Meta(Meta::Variant(id, idx)) => self.infer_variant_call(span, id, idx, args),
             // Other
             other => {
                 emit!(
@@ -501,7 +507,7 @@ impl<'tx> CheckCtxt<'tx> {
             ExprKind::Function(params, expr) => todo!(),
             ExprKind::Match(expr, cases) => todo!(),
             ExprKind::Paren(expr) => todo!(),
-            ExprKind::Block(stmts) => todo!(),
+            ExprKind::Block(stmts) => self.infer_block(stmts),
             ExprKind::Todo(expr) => todo!(),
             ExprKind::Panic(expr) => todo!(),
         };

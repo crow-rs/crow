@@ -1,21 +1,38 @@
 /// Imports
 use crate::typ::Typ;
 use crow_ast::atom::Publicity;
+use crow_lex::token::Span;
 use id_arena::Id;
 use std::collections::HashMap;
+
+/// Defines a field in the type system
+#[derive(Clone)]
+pub struct Field {
+    pub span: Span,
+    pub name: String,
+    pub typ: Typ,
+}
 
 /// Defines a structure in the type system
 pub struct Struct {
     pub name: String,
     pub generics: Vec<String>,
-    pub fields: HashMap<String, Typ>,
+    pub fields: Vec<Field>,
 }
 
-/// Defines a structure in the type system
+/// Defines an enum variant in the type system
+#[derive(Clone)]
+pub struct Variant {
+    pub span: Span,
+    pub name: String,
+    pub fields: Vec<Typ>,
+}
+
+/// Defines an enum in the type system
 pub struct Enum {
     pub name: String,
     pub generics: Vec<String>,
-    pub variants: HashMap<String, Vec<Typ>>,
+    pub variants: Vec<Variant>,
 }
 
 /// Defines a function in the type system
@@ -33,7 +50,7 @@ pub enum Def {
     Enum(Id<Enum>),
     Function(Id<Function>),
     Const(Typ),
-    Variant(Id<Enum>, String),
+    Variant(Id<Enum>, usize),
 }
 
 /// Represents module definition

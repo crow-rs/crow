@@ -1,7 +1,7 @@
 /// Imports
 use crate::{
     ctxt::check::CheckCtxt,
-    def::{Def, Function},
+    def::{Def, Field, Function, Variant},
 };
 use crow_ast::{
     atom::Publicity,
@@ -26,7 +26,11 @@ impl<'tx> CheckCtxt<'tx> {
                 self.tx.get_struct_mut(id).fields = s
                     .fields
                     .iter()
-                    .map(|f| (f.name.clone(), self.infer_type_hint(f.hint.clone())))
+                    .map(|f| Field {
+                        span: f.span.clone(),
+                        name: f.name.clone(),
+                        typ: self.infer_type_hint(f.hint.clone()),
+                    })
                     .collect()
             }
             _ => unreachable!(),
@@ -50,23 +54,21 @@ impl<'tx> CheckCtxt<'tx> {
                 self.tx.get_enum_mut(id).variants = e
                     .variants
                     .iter()
-                    .map(|v| {
-                        (
-                            v.name.clone(),
-                            v.fields
-                                .iter()
-                                .map(|hint| self.infer_type_hint(hint.clone()))
-                                .collect(),
-                        )
+                    .map(|v| Variant {
+                        span: v.span.clone(),
+                        name: v.name.clone(),
+                        fields: v
+                            .fields
+                            .iter()
+                            .map(|hint| self.infer_type_hint(hint.clone()))
+                            .collect(),
                     })
                     .collect();
 
                 // Defining variant constructors
-                for variant in &e.variants {
-                    self.resolver.declare_mod_def(
-                        &variant.name,
-                        (p, Def::Variant(id, variant.name.clone())),
-                    );
+                for (idx, variant) in e.variants.iter().enumerate() {
+                    self.resolver
+                        .declare_mod_def(&variant.name, (p, Def::Variant(id, idx)));
                 }
             }
             _ => unreachable!(),

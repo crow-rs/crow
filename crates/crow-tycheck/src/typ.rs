@@ -15,7 +15,7 @@ pub enum Var {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Meta {
     Module(Id<Module>),
-    Variant(Id<Enum>, String),
+    Variant(Id<Enum>, usize),
     Struct(Id<Struct>),
     Enum(Id<Enum>),
 }

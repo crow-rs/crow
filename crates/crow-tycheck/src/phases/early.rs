@@ -23,7 +23,7 @@ impl<'tx> CheckCtxt<'tx> {
             Def::Struct(self.tx.insert_struct(def::Struct {
                 name: s.name.clone(),
                 generics: s.generics.clone(),
-                fields: HashMap::new(),
+                fields: Vec::new(),
             })),
         );
         if !self.resolver.declare_mod_def(&s.name, def) {
@@ -43,7 +43,7 @@ impl<'tx> CheckCtxt<'tx> {
             Def::Enum(self.tx.insert_enum(def::Enum {
                 name: e.name.clone(),
                 generics: e.generics.clone(),
-                variants: HashMap::new(),
+                variants: Vec::new(),
             })),
         );
         if !self.resolver.declare_mod_def(&e.name, def) {
