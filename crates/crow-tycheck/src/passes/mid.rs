@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::check::CheckCtxt,
+    ctxt::check::SolveCtxt,
     def::{Def, Field, Function, Variant},
 };
 use crow_ast::{
@@ -9,7 +9,7 @@ use crow_ast::{
 };
 
 /// Implementation of middle check phase
-impl<'tx> CheckCtxt<'tx> {
+impl<'tx> SolveCtxt<'tx> {
     /// Performs mid analysis of struct:
     /// - infers types of all the fields
     /// - prepares all the fields

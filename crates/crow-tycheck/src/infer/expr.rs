@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::check::CheckCtxt,
+    ctxt::check::SolveCtxt,
     def::{Def, Enum, Function, Module, Struct, Variant},
     errors::TypeckError,
     typ::{Meta, Typ},
@@ -14,7 +14,7 @@ use crow_macros::emit;
 use id_arena::Id;
 
 /// Implementation of expressions inference
-impl<'tx> CheckCtxt<'tx> {
+impl<'tx> SolveCtxt<'tx> {
     /// Infers literal
     fn infer_lit(&mut self, lit: Lit) -> Typ {
         match lit {
@@ -51,7 +51,13 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Infers binary expression
-    fn infer_binary(&mut self, span: Span, bin_op: BinOp, lhs: Expr, rhs: Expr) -> Typ {
+    fn infer_binary(
+        &mut self,
+        span: Span,
+        bin_op: BinOp,
+        lhs: Expr,
+        rhs: Expr,
+    ) -> Typ {
         let lhs = self.infer_expr(lhs);
         let rhs = self.infer_expr(rhs);
 
@@ -116,9 +122,15 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Infers if expression
-    fn infer_if(&mut self, cond: Expr, then: Expr, else_: Option<Box<Expr>>) -> Typ {
+    fn infer_if(
+        &mut self,
+        cond: Expr,
+        then: Expr,
+        else_: Option<Box<Expr>>,
+    ) -> Typ {
         // Checking that condition type is bool
-        let (cond_span, cond_typ) = (cond.span.clone(), self.infer_expr(cond));
+        let (cond_span, cond_typ) =
+            (cond.span.clone(), self.infer_expr(cond));
         self.coerce(&cond_span, cond_typ, Typ::Bool);
 
         // Inferring then block
@@ -126,7 +138,8 @@ impl<'tx> CheckCtxt<'tx> {
 
         // Inferring else block, is presented
         if let Some(else_) = else_ {
-            let (else_span, else_typ) = (else_.span.clone(), self.infer_expr(*else_));
+            let (else_span, else_typ) =
+                (else_.span.clone(), self.infer_expr(*else_));
             self.coerce(&else_span, then_typ.clone(), else_typ.clone());
         }
 
@@ -214,11 +227,19 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Infers enum field expression
-    fn infer_meta_enum_field(&mut self, span: Span, id: Id<Enum>, name: String) -> Typ {
+    fn infer_meta_enum_field(
+        &mut self,
+        span: Span,
+        id: Id<Enum>,
+        name: String,
+    ) -> Typ {
         let en = self.tx.get_enum(id);
-        match en.variants.iter().enumerate().find(|(_, v)| v.name == name) {
+        match en.variants.iter().enumerate().find(|(_, v)| v.name == name)
+        {
             // Variant with some fields => meta variant type
-            Some((idx, variant)) if !variant.fields.is_empty() => Typ::Meta(Meta::Variant(id, idx)),
+            Some((idx, variant)) if !variant.fields.is_empty() => {
+                Typ::Meta(Meta::Variant(id, idx))
+            }
             // Variant without any fields => enum type
             Some((_, _)) => Typ::Enum(
                 id,
@@ -242,7 +263,12 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Infers module field expression
-    fn infer_module_field(&mut self, span: Span, id: Id<Module>, name: String) -> Typ {
+    fn infer_module_field(
+        &mut self,
+        span: Span,
+        id: Id<Module>,
+        name: String,
+    ) -> Typ {
         match self.tx.get_mod(id).defs.get(&name) {
             Some((p, d)) => {
                 let publicity = p.clone();
@@ -256,7 +282,9 @@ impl<'tx> CheckCtxt<'tx> {
                             .collect(),
                     ),
                     Def::Const(typ) => typ.clone(),
-                    Def::Variant(id, idx) => Typ::Meta(Meta::Variant(*id, *idx)),
+                    Def::Variant(id, idx) => {
+                        Typ::Meta(Meta::Variant(*id, *idx))
+                    }
                 };
                 match publicity {
                     Publicity::Pub => typ,
@@ -289,16 +317,27 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Infers field expression
-    fn infer_field(&mut self, span: Span, container: Expr, name: String) -> Typ {
+    fn infer_field(
+        &mut self,
+        span: Span,
+        container: Expr,
+        name: String,
+    ) -> Typ {
         // Matching container
         let container = self.infer_expr(container);
         match container {
             // Struct field access
-            Typ::Struct(id, args) => self.infer_struct_field(span, id, args, name),
+            Typ::Struct(id, args) => {
+                self.infer_struct_field(span, id, args, name)
+            }
             // Enum variant access
-            Typ::Meta(Meta::Enum(id)) => self.infer_meta_enum_field(span, id, name),
+            Typ::Meta(Meta::Enum(id)) => {
+                self.infer_meta_enum_field(span, id, name)
+            }
             // Module field access
-            Typ::Meta(Meta::Module(id)) => self.infer_module_field(span, id, name),
+            Typ::Meta(Meta::Module(id)) => {
+                self.infer_module_field(span, id, name)
+            }
             // Undefined field
             _ => {
                 emit!(
@@ -339,7 +378,7 @@ impl<'tx> CheckCtxt<'tx> {
             params
                 .into_iter()
                 .zip(args)
-                .map(|(p, a)| self.coerce(&span, p, a));
+                .for_each(|(p, a)| self.coerce(&span, p, a));
         } else {
             emit!(
                 self,
@@ -369,7 +408,7 @@ impl<'tx> CheckCtxt<'tx> {
             params
                 .iter()
                 .zip(args)
-                .map(|(p, a)| self.coerce(&span, p.clone(), a));
+                .for_each(|(p, a)| self.coerce(&span, p.clone(), a));
         } else {
             emit!(
                 self,
@@ -385,7 +424,12 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Infers struct call
-    fn infer_struct_call(&mut self, span: Span, id: Id<Struct>, args: Vec<Typ>) -> Typ {
+    fn infer_struct_call(
+        &mut self,
+        span: Span,
+        id: Id<Struct>,
+        args: Vec<Typ>,
+    ) -> Typ {
         // Getting struct info
         let (generics_len, fields): (usize, Vec<_>) = {
             let s = self.tx.get_struct(id);
@@ -393,7 +437,9 @@ impl<'tx> CheckCtxt<'tx> {
         };
 
         // Preparing generic args
-        let generic_args = (0..generics_len).map(|_| Typ::Var(self.fresh())).collect();
+        let generic_args = (0..generics_len)
+            .map(|_| Typ::Var(self.fresh()))
+            .collect::<Vec<Typ>>();
 
         // Instantiating field types
         let params = fields
@@ -439,7 +485,9 @@ impl<'tx> CheckCtxt<'tx> {
         };
 
         // Preparing generic args
-        let generic_args = (0..generics_len).map(|_| Typ::Var(self.fresh())).collect();
+        let generic_args = (0..generics_len)
+            .map(|_| Typ::Var(self.fresh()))
+            .collect::<Vec<Typ>>();
 
         // Instantiating variant fields
         let params = variant
@@ -472,7 +520,12 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Infers call expression
-    fn infer_call(&mut self, span: Span, callee: Expr, args: Vec<Expr>) -> Typ {
+    fn infer_call(
+        &mut self,
+        span: Span,
+        callee: Expr,
+        args: Vec<Expr>,
+    ) -> Typ {
         // Inferring callee and args
         let callee = self.infer_expr(callee);
         let args = args
@@ -483,13 +536,21 @@ impl<'tx> CheckCtxt<'tx> {
         // Matching callee
         match callee {
             // Function call
-            Typ::Fun(id, generics) => self.infer_fun_call(span, id, generics, args),
+            Typ::Fun(id, generics) => {
+                self.infer_fun_call(span, id, generics, args)
+            }
             // Function reference call
-            Typ::FunRef(ret, params) => self.infer_fun_ref_call(span, *ret, params, args),
+            Typ::FunRef(ret, params) => {
+                self.infer_fun_ref_call(span, *ret, params, args)
+            }
             // Struct call
-            Typ::Meta(Meta::Struct(id)) => self.infer_struct_call(span, id, args),
+            Typ::Meta(Meta::Struct(id)) => {
+                self.infer_struct_call(span, id, args)
+            }
             // Enum variant call
-            Typ::Meta(Meta::Variant(id, idx)) => self.infer_variant_call(span, id, idx, args),
+            Typ::Meta(Meta::Variant(id, idx)) => {
+                self.infer_variant_call(span, id, idx, args)
+            }
             // Other
             other => {
                 emit!(
@@ -510,13 +571,25 @@ impl<'tx> CheckCtxt<'tx> {
         let span = expr.span;
         let typ = match expr.kind {
             ExprKind::Lit(lit) => self.infer_lit(lit),
-            ExprKind::Unary(expr, un_op) => self.infer_unary(span, un_op, *expr),
-            ExprKind::Bin(lhs, rhs, bin_op) => self.infer_binary(span, bin_op, *lhs, *rhs),
-            ExprKind::Assign(what, to) => self.infer_assign(span, *what, *to),
-            ExprKind::If(cond, then, else_) => self.infer_if(*cond, *then, else_),
+            ExprKind::Unary(expr, un_op) => {
+                self.infer_unary(span, un_op, *expr)
+            }
+            ExprKind::Bin(lhs, rhs, bin_op) => {
+                self.infer_binary(span, bin_op, *lhs, *rhs)
+            }
+            ExprKind::Assign(what, to) => {
+                self.infer_assign(span, *what, *to)
+            }
+            ExprKind::If(cond, then, else_) => {
+                self.infer_if(*cond, *then, else_)
+            }
             ExprKind::Var(name) => self.infer_var(span, name),
-            ExprKind::Field(container, name) => self.infer_field(span, *container, name),
-            ExprKind::Call(callee, args) => self.infer_call(span, *callee, args),
+            ExprKind::Field(container, name) => {
+                self.infer_field(span, *container, name)
+            }
+            ExprKind::Call(callee, args) => {
+                self.infer_call(span, *callee, args)
+            }
             ExprKind::Function(params, expr) => todo!(),
             ExprKind::Match(expr, cases) => todo!(),
             ExprKind::Paren(expr) => todo!(),

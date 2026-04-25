@@ -1,5 +1,5 @@
-use crow_ast::atom::{BinOp, UnOp};
 /// Imports
+use crow_ast::atom::{BinOp, UnOp};
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use std::sync::Arc;
 use thiserror::Error;

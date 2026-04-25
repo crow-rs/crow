@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::check::CheckCtxt,
+    ctxt::check::SolveCtxt,
     errors::TypeckError,
     typ::{Meta, Typ, Var},
 };
@@ -8,29 +8,35 @@ use crow_lex::token::Span;
 use crow_macros::emit;
 use id_arena::Id;
 
-/// Unification error
+/// Represents unification error
 #[derive(Clone)]
 pub enum UnifyError {
+    /// Types mismatch
     Mismatch,
+    /// Occurs check failure
     Occurs,
 }
 
 /// Implementation of coercion solving
-impl<'tx> CheckCtxt<'tx> {
-    /// Generates fresh type variable
+impl<'tx> SolveCtxt<'tx> {
+    /// Generates fresh unbound type variable
     pub fn fresh(&mut self) -> Id<Var> {
         self.tx.insert_var(Var::Unbound)
     }
 
     /// Applies all the substitutions by replacing
-    /// type variables with concrete types
+    /// type variables with concrete types from `TypCtxt`
     pub fn apply(&mut self, typ: Typ) -> Typ {
+        // Helper function for args mapping
+        let mut map_args = |args: Vec<Typ>| {
+            args.into_iter().map(|a| self.apply(a)).collect()
+        };
+
+        // Matching type for application
         match typ {
-            Typ::Fun(id, args) => Typ::Fun(id, args.into_iter().map(|a| self.apply(a)).collect()),
-            Typ::Struct(id, args) => {
-                Typ::Struct(id, args.into_iter().map(|a| self.apply(a)).collect())
-            }
-            Typ::Enum(id, args) => Typ::Enum(id, args.into_iter().map(|a| self.apply(a)).collect()),
+            Typ::Fun(id, args) => Typ::Fun(id, map_args(args)),
+            Typ::Struct(id, args) => Typ::Struct(id, map_args(args)),
+            Typ::Enum(id, args) => Typ::Enum(id, map_args(args)),
             Typ::Var(id) => match self.tx.get_var(id) {
                 Var::Unbound => Typ::Var(id),
                 Var::Bound(typ) => typ.clone(),
@@ -39,7 +45,7 @@ impl<'tx> CheckCtxt<'tx> {
         }
     }
 
-    /// Binds type variable `id` to `ty` if it is still unbound.
+    /// Binds type variable `id` to `typ` if it is still unbound
     pub fn subst(&mut self, id: Id<Var>, typ: Typ) {
         let var = self.tx.get_var_mut(id);
         if let Var::Unbound = var {
@@ -47,10 +53,13 @@ impl<'tx> CheckCtxt<'tx> {
         }
     }
 
-    /// Performs instantiation
-    pub fn instantiate(&self, ty: Typ, args: &Vec<Typ>) -> Typ {
+    /// Performs instantiation of a type
+    /// by replacing generic params with generic args
+    pub fn instantiate(&self, ty: Typ, args: &[Typ]) -> Typ {
         match ty {
-            Typ::Generic(name, i) => args.get(i).cloned().unwrap_or(Typ::Generic(name, i)),
+            Typ::Generic(name, idx) => {
+                args.get(idx).cloned().unwrap_or(Typ::Generic(name, idx))
+            }
             Typ::Struct(id, inner_args) => Typ::Struct(
                 id,
                 inner_args
@@ -115,19 +124,27 @@ impl<'tx> CheckCtxt<'tx> {
             | (Typ::Unit, Typ::Unit) => Ok(()),
 
             // Skipping same generics
-            (Typ::Generic(_, idx), Typ::Generic(_, idx2)) if idx == idx2 => Ok(()),
+            (Typ::Generic(_, idx), Typ::Generic(_, idx2))
+                if idx == idx2 =>
+            {
+                Ok(())
+            }
 
             // Skipping same meta variables
             (Typ::Meta(a), Typ::Meta(b)) if a == b => Ok(()),
 
             // Unifying adt args
-            (Typ::Struct(id1, args1), Typ::Struct(id2, args2)) if id1 == id2 => {
+            (Typ::Struct(id1, args1), Typ::Struct(id2, args2))
+                if id1 == id2 =>
+            {
                 for (a, b) in args1.into_iter().zip(args2) {
                     self.unify(a, b)?;
                 }
                 Ok(())
             }
-            (Typ::Enum(id1, args1), Typ::Enum(id2, args2)) if id1 == id2 => {
+            (Typ::Enum(id1, args1), Typ::Enum(id2, args2))
+                if id1 == id2 =>
+            {
                 for (a, b) in args1.into_iter().zip(args2) {
                     self.unify(a, b)?;
                 }
@@ -162,7 +179,8 @@ impl<'tx> CheckCtxt<'tx> {
                         .map(|it| self.instantiate(it.clone(), &args))
                         .collect::<Vec<Typ>>(),
                 );
-                let (ret2, params2) = (fun.ret.clone(), fun.params.clone());
+                let (ret2, params2) =
+                    (fun.ret.clone(), fun.params.clone());
 
                 self.unify(ret1, ret2)?;
                 for (a, b) in params1.into_iter().zip(params2) {
@@ -181,8 +199,12 @@ impl<'tx> CheckCtxt<'tx> {
     }
 
     /// Unifies type variables
-    fn unify_var(&mut self, id: Id<Var>, ty: Typ) -> Result<(), UnifyError> {
-        match self.tx.get_var(id).clone() {
+    fn unify_var(
+        &mut self,
+        id: Id<Var>,
+        ty: Typ,
+    ) -> Result<(), UnifyError> {
+        match self.tx.get_var(id) {
             // Variable already bound, unifying
             Var::Bound(bound) => self.unify(bound.clone(), ty),
 
@@ -211,11 +233,12 @@ impl<'tx> CheckCtxt<'tx> {
                     _ => false,
                 }
             }
-            Typ::Struct(_, args) | Typ::Enum(_, args) | Typ::Fun(_, args) => {
-                args.iter().any(|a| self.occurs(id, a))
-            }
+            Typ::Struct(_, args)
+            | Typ::Enum(_, args)
+            | Typ::Fun(_, args) => args.iter().any(|a| self.occurs(id, a)),
             Typ::FunRef(ret, params) => {
-                params.iter().any(|a| self.occurs(id, a)) || self.occurs(id, &ret)
+                params.iter().any(|a| self.occurs(id, a))
+                    || self.occurs(id, &ret)
             }
             _ => false,
         }
@@ -241,7 +264,7 @@ impl<'tx> CheckCtxt<'tx> {
                         .map(|a| self.pretty(a))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    format!("{name}<{args}>")
+                    format!("{name}[{args}]")
                 }
             }
             Typ::Enum(id, args) => {
@@ -254,7 +277,7 @@ impl<'tx> CheckCtxt<'tx> {
                         .map(|a| self.pretty(a))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    format!("{name}<{args}>")
+                    format!("{name}[{args}]")
                 }
             }
             Typ::Fun(id, args) => {
@@ -262,7 +285,9 @@ impl<'tx> CheckCtxt<'tx> {
                 let params = def
                     .params
                     .iter()
-                    .map(|p| self.pretty(&self.instantiate(p.clone(), args)))
+                    .map(|p| {
+                        self.pretty(&self.instantiate(p.clone(), args))
+                    })
                     .collect::<Vec<_>>()
                     .join(", ");
                 let ret = self.pretty(&def.ret);

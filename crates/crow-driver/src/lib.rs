@@ -10,7 +10,7 @@ use crow_lex::Lexer;
 use crow_macros::{bail, bug};
 use crow_parse::Parser;
 use crow_tycheck::ctxt::{
-    check::CheckCtxt,
+    check::SolveCtxt,
     typ::{self, TypCtxt},
 };
 use miette::NamedSource;
@@ -207,7 +207,7 @@ impl Driver {
         for name in sorted {
             info!("typechecking `{name}`");
             let module = loaded_modules.get(name).unwrap().clone();
-            let mut ctxt = CheckCtxt::new(&mut typ_ctxt);
+            let mut ctxt = SolveCtxt::new(&mut typ_ctxt);
             ctxt.solve(module);
         }
 

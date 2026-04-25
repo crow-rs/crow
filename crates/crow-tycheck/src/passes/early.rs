@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 /// Implementation
 use crate::{
-    ctxt::check::CheckCtxt,
+    ctxt::check::SolveCtxt,
     def::{self, Def},
     errors::TypeckError,
 };
@@ -14,7 +14,7 @@ use crow_lex::token::Span;
 use crow_macros::bail;
 
 /// Implementation of early check phase
-impl<'tx> CheckCtxt<'tx> {
+impl<'tx> SolveCtxt<'tx> {
     /// Performs early analysis of struct
     /// - Defines struct with name and generics, ignoring fields
     pub fn early_analyze_struct(&mut self, span: &Span, p: Publicity, s: &Struct) {

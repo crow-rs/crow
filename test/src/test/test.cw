@@ -1,14 +1,15 @@
-enum A {
-    B,
-    C
+enum Option[T] {
+    Some(T),
+    None
 }
 
-enum D {
-    E,
-    F
+fun sum(a: int, b: int) -> int {
+    a + b
 }
 
 fun main() {
-    let a = B
-    a = E
+    let a = Some(3)
+    a = Some(true)
+    a = 3
+    let b = sum("hello", 1)
 }

@@ -1,9 +1,9 @@
 /// Imports
-use crate::{ctxt::check::CheckCtxt, def::Def};
+use crate::{ctxt::check::SolveCtxt, def::Def};
 use crow_ast::item::{Const, Fun, ItemKind, Module};
 
 /// Implementation of middle check phase
-impl<'tx> CheckCtxt<'tx> {
+impl<'tx> SolveCtxt<'tx> {
     /// Performs late analysis of function:
     /// - infers body of the function
     pub fn late_analyze_fun(&mut self, f: Fun) {
