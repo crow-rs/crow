@@ -497,7 +497,7 @@ impl<'tx> CheckCtxt<'tx> {
             ExprKind::If(cond, then, else_) => self.infer_if(*cond, *then, else_),
             ExprKind::Var(name) => self.infer_var(span, name),
             ExprKind::Field(container, name) => self.infer_field(span, *container, name),
-            ExprKind::Call(callee, args) => self.infer_call(span, callee, args),
+            ExprKind::Call(callee, args) => self.infer_call(span, *callee, args),
             ExprKind::Function(params, expr) => todo!(),
             ExprKind::Match(expr, cases) => todo!(),
             ExprKind::Paren(expr) => todo!(),
