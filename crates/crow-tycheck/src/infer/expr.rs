@@ -745,9 +745,9 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers match expression case
-    fn infer_case(&mut self, what: &[Typ], case: &Case) -> Typ {
+    fn infer_case(&mut self, values: &[Typ], case: &Case) -> Typ {
         // Checking patterns
-        for (what, pat) in what.iter().zip(&case.pats) {
+        for (what, pat) in values.iter().zip(&case.pats) {
             self.check_pat(what.clone(), pat);
         }
 
@@ -756,10 +756,23 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers match expression
-    fn infer_match(&mut self, what: &[Expr], cases: &[Case]) -> Typ {
+    fn infer_match(&mut self, values: &[Expr], cases: &[Case]) -> Typ {
+        // Inferring matchable values
+        let values = values
+            .iter()
+            .map(|v| self.infer_expr(v))
+            .collect::<Vec<_>>();
+
         // Performing exhaustiveness check
         // ...
-        
+
+        // Checking case types equality
+        let fresh = Typ::Var(self.fresh());
+        for case in cases {
+            let typ = self.infer_case(&values, case);
+            self.eq(&case.span, fresh.clone(), typ);
+        }
+        fresh
     }
 
     /// Infers expression
@@ -787,7 +800,9 @@ impl<'tx> InferCtxt<'tx> {
                 self.infer_call(span, callee, args)
             }
             ExprKind::Function(params, ret) => self.infer_fun(params, ret),
-            ExprKind::Match(what, cases) => self.infer_match(what, cases),
+            ExprKind::Match(values, cases) => {
+                self.infer_match(values, cases)
+            }
             ExprKind::Paren(expr) => self.infer_expr(expr),
             ExprKind::Block(stmts) => self.infer_block(stmts),
             ExprKind::Todo(expr) => self.infer_todo_or_panic(span, expr),
