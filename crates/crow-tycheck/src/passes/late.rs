@@ -33,7 +33,7 @@ impl<'tx> SolveCtxt<'tx> {
 
                 // Checking body
                 let (block_span, block_typ) = (f.block.span.clone(), self.infer_expr(f.block));
-                self.coerce(&block_span, block_typ, ret);
+                self.eq(&block_span, block_typ, ret);
 
                 // Exiting function scope
                 self.resolver.exit_scope();

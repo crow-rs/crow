@@ -24,33 +24,9 @@ impl<'tx> SolveCtxt<'tx> {
         self.tx.insert_var(Var::Unbound)
     }
 
-    /// Applies all the substitutions by replacing
-    /// type variables with concrete types from `TypCtxt`
-    pub fn apply(&mut self, typ: Typ) -> Typ {
-        // Helper function for args mapping
-        let mut map_args = |args: Vec<Typ>| {
-            args.into_iter().map(|a| self.apply(a)).collect()
-        };
-
-        // Matching type for application
-        match typ {
-            Typ::Fun(id, args) => Typ::Fun(id, map_args(args)),
-            Typ::Struct(id, args) => Typ::Struct(id, map_args(args)),
-            Typ::Enum(id, args) => Typ::Enum(id, map_args(args)),
-            Typ::Var(id) => match self.tx.get_var(id) {
-                Var::Unbound => Typ::Var(id),
-                Var::Bound(typ) => typ.clone(),
-            },
-            other => other,
-        }
-    }
-
-    /// Binds type variable `id` to `typ` if it is still unbound
-    pub fn subst(&mut self, id: Id<Var>, typ: Typ) {
-        let var = self.tx.get_var_mut(id);
-        if let Var::Unbound = var {
-            *var = Var::Bound(typ);
-        }
+    /// Returns fresh generics vector with given len
+    pub fn fresh_generic_args(&mut self, len: usize) -> Vec<Typ> {
+        (0..len).map(|_| Typ::Var(self.fresh())).collect()
     }
 
     /// Performs instantiation of a type
@@ -85,8 +61,37 @@ impl<'tx> SolveCtxt<'tx> {
         }
     }
 
+    /// Applies all the substitutions by replacing
+    /// type variables with concrete types from `TypCtxt`
+    pub fn apply(&mut self, typ: Typ) -> Typ {
+        // Helper function for args mapping
+        let mut map_args = |args: Vec<Typ>| {
+            args.into_iter().map(|a| self.apply(a)).collect()
+        };
+
+        // Matching type for application
+        match typ {
+            Typ::Fun(id, args) => Typ::Fun(id, map_args(args)),
+            Typ::Struct(id, args) => Typ::Struct(id, map_args(args)),
+            Typ::Enum(id, args) => Typ::Enum(id, map_args(args)),
+            Typ::Var(id) => match self.tx.get_var(id) {
+                Var::Unbound => Typ::Var(id),
+                Var::Bound(typ) => self.apply(typ.clone()),
+            },
+            other => other,
+        }
+    }
+
+    /// Binds type variable `id` to `typ` if it is still unbound
+    pub fn subst(&mut self, id: Id<Var>, typ: Typ) {
+        let var = self.tx.get_var_mut(id);
+        if let Var::Unbound = var {
+            *var = Var::Bound(typ);
+        }
+    }
+
     /// Performs types equality coercion
-    pub fn coerce(&mut self, span: &Span, a: Typ, b: Typ) {
+    pub fn eq(&mut self, span: &Span, a: Typ, b: Typ) {
         if let Err(err) = self.unify(a.clone(), b.clone()) {
             match err {
                 UnifyError::Mismatch => emit!(

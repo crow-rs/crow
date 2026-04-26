@@ -95,7 +95,7 @@ impl<'tx> SolveCtxt<'tx> {
             (BinOp::Concat, Typ::Str, Typ::Str) => Typ::Str,
             // Equality operators
             (BinOp::Eq, a, b) | (BinOp::Ne, a, b) => {
-                self.coerce(&span, a, b);
+                self.eq(&span, a, b);
                 Typ::Bool
             }
             // Other
@@ -120,7 +120,7 @@ impl<'tx> SolveCtxt<'tx> {
         let what = self.infer_expr(what);
         let to = self.infer_expr(to);
 
-        self.coerce(&span, what, to.clone());
+        self.eq(&span, what, to.clone());
         to
     }
 
@@ -134,7 +134,7 @@ impl<'tx> SolveCtxt<'tx> {
         // Checking that condition type is bool
         let (cond_span, cond_typ) =
             (cond.span.clone(), self.infer_expr(cond));
-        self.coerce(&cond_span, cond_typ, Typ::Bool);
+        self.eq(&cond_span, cond_typ, Typ::Bool);
 
         // Inferring then block
         let then_typ = self.infer_expr(then);
@@ -143,7 +143,7 @@ impl<'tx> SolveCtxt<'tx> {
         if let Some(else_) = else_ {
             let (else_span, else_typ) =
                 (else_.span.clone(), self.infer_expr(*else_));
-            self.coerce(&else_span, then_typ.clone(), else_typ.clone());
+            self.eq(&else_span, then_typ.clone(), else_typ.clone());
         }
 
         then_typ
@@ -159,21 +159,20 @@ impl<'tx> SolveCtxt<'tx> {
                 Some(Def::Const(t)) => t,
                 Some(Def::Enum(e)) => Typ::Meta(Meta::Enum(e)),
                 Some(Def::Struct(s)) => Typ::Meta(Meta::Struct(s)),
-                Some(Def::Function(f)) => Typ::Fun(
-                    f,
-                    (0..self.tx.get_function(f).generics.len())
-                        .map(|_| Typ::Var(self.fresh()))
-                        .collect(),
-                ),
+                Some(Def::Function(id)) => {
+                    let fun = self.tx.get_function(id);
+                    Typ::Fun(
+                        id,
+                        self.fresh_generic_args(fun.generics.len()),
+                    )
+                }
                 Some(Def::Variant(id, idx)) => {
                     let en = self.tx.get_enum(id);
                     let variant = en.variants[idx].clone();
                     if variant.fields.is_empty() {
                         Typ::Enum(
                             id,
-                            (0..en.generics.len())
-                                .map(|_| Typ::Var(self.fresh()))
-                                .collect(),
+                            self.fresh_generic_args(en.generics.len()),
                         )
                     } else {
                         Typ::Meta(Meta::Variant(id, idx))
@@ -244,12 +243,9 @@ impl<'tx> SolveCtxt<'tx> {
                 Typ::Meta(Meta::Variant(id, idx))
             }
             // Variant without any fields => enum type
-            Some((_, _)) => Typ::Enum(
-                id,
-                (0..en.generics.len())
-                    .map(|_| Typ::Var(self.fresh()))
-                    .collect(),
-            ),
+            Some((_, _)) => {
+                Typ::Enum(id, self.fresh_generic_args(en.generics.len()))
+            }
             // Other => undefined field
             None => {
                 emit!(
@@ -272,24 +268,24 @@ impl<'tx> SolveCtxt<'tx> {
         id: Id<Module>,
         name: String,
     ) -> Typ {
-        match self.tx.get_mod(id).defs.get(&name) {
-            Some((p, d)) => {
-                let publicity = p.clone();
-                let typ = match d {
-                    Def::Struct(id) => Typ::Meta(Meta::Struct(*id)),
-                    Def::Enum(id) => Typ::Meta(Meta::Enum(*id)),
-                    Def::Function(id) => Typ::Fun(
-                        *id,
-                        (0..self.tx.get_function(*id).generics.len())
-                            .map(|_| Typ::Var(self.fresh()))
-                            .collect(),
-                    ),
+        match self.tx.get_mod(id).defs.get(&name).cloned() {
+            Some((p, def)) => {
+                let typ = match def {
+                    Def::Struct(id) => Typ::Meta(Meta::Struct(id)),
+                    Def::Enum(id) => Typ::Meta(Meta::Enum(id)),
+                    Def::Function(id) => {
+                        let fun = self.tx.get_function(id);
+                        Typ::Fun(
+                            id,
+                            self.fresh_generic_args(fun.generics.len()),
+                        )
+                    }
                     Def::Const(typ) => typ.clone(),
                     Def::Variant(id, idx) => {
-                        Typ::Meta(Meta::Variant(*id, *idx))
+                        Typ::Meta(Meta::Variant(id, idx))
                     }
                 };
-                match publicity {
+                match p {
                     Publicity::Pub => typ,
                     Publicity::Priv => {
                         emit!(
@@ -381,7 +377,7 @@ impl<'tx> SolveCtxt<'tx> {
             params
                 .into_iter()
                 .zip(args)
-                .for_each(|(p, a)| self.coerce(&span, p, a));
+                .for_each(|(p, a)| self.eq(&span, p, a));
         } else {
             emit!(
                 self,
@@ -411,7 +407,7 @@ impl<'tx> SolveCtxt<'tx> {
             params
                 .iter()
                 .zip(args)
-                .for_each(|(p, a)| self.coerce(&span, p.clone(), a));
+                .for_each(|(p, a)| self.eq(&span, p.clone(), a));
         } else {
             emit!(
                 self,
@@ -440,9 +436,7 @@ impl<'tx> SolveCtxt<'tx> {
         };
 
         // Preparing generic args
-        let generic_args = (0..generics_len)
-            .map(|_| Typ::Var(self.fresh()))
-            .collect::<Vec<Typ>>();
+        let generic_args = self.fresh_generic_args(generics_len);
 
         // Instantiating field types
         let params = fields
@@ -456,7 +450,7 @@ impl<'tx> SolveCtxt<'tx> {
             params
                 .into_iter()
                 .zip(args)
-                .for_each(|(p, a)| self.coerce(&span, p, a));
+                .for_each(|(p, a)| self.eq(&span, p, a));
         } else {
             emit!(
                 self,
@@ -488,9 +482,7 @@ impl<'tx> SolveCtxt<'tx> {
         };
 
         // Preparing generic args
-        let generic_args = (0..generics_len)
-            .map(|_| Typ::Var(self.fresh()))
-            .collect::<Vec<Typ>>();
+        let generic_args = self.fresh_generic_args(generics_len);
 
         // Instantiating variant fields
         let params = variant
@@ -505,7 +497,7 @@ impl<'tx> SolveCtxt<'tx> {
             params
                 .into_iter()
                 .zip(args)
-                .for_each(|(f, a)| self.coerce(&span, f, a));
+                .for_each(|(f, a)| self.eq(&span, f, a));
         } else {
             emit!(
                 self,

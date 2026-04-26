@@ -16,7 +16,7 @@ impl<'tx> SolveCtxt<'tx> {
         let typ = self.infer_type_hint(hint);
 
         // Checking types equality
-        self.coerce(&span, expr_typ, typ.clone());
+        self.eq(&span, expr_typ, typ.clone());
 
         // Declaring local variable
         self.resolver.declare_local_def(&name, typ);
