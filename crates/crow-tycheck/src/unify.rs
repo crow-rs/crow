@@ -29,32 +29,30 @@ impl<'tx> InferCtxt<'tx> {
         (0..len).map(|_| Typ::Var(self.fresh())).collect()
     }
 
-    /// Performs instantiation of a type
-    /// by replacing generic params with generic args
-    pub fn instantiate(&self, ty: Typ, args: &[Typ]) -> Typ {
+    /// Substitutes generic parameters with given
+    /// concrete type arguments: `Typ::Generic(_, idx)` -> `args.get(idx)`
+    pub fn subst(&self, ty: Typ, args: &[Typ]) -> Typ {
         match ty {
-            Typ::Generic(name, idx) => {
-                args.get(idx).cloned().unwrap_or(Typ::Generic(name, idx))
-            }
+            Typ::Generic(_, idx) => args[idx].clone(),
             Typ::Struct(id, inner_args) => Typ::Struct(
                 id,
                 inner_args
                     .into_iter()
-                    .map(|a| self.instantiate(a, args))
+                    .map(|a| self.subst(a, args))
                     .collect(),
             ),
             Typ::Enum(id, inner_args) => Typ::Enum(
                 id,
                 inner_args
                     .into_iter()
-                    .map(|a| self.instantiate(a, args))
+                    .map(|a| self.subst(a, args))
                     .collect(),
             ),
             Typ::Fun(id, inner_args) => Typ::Fun(
                 id,
                 inner_args
                     .into_iter()
-                    .map(|a| self.instantiate(a, args))
+                    .map(|a| self.subst(a, args))
                     .collect(),
             ),
             other => other,
@@ -178,10 +176,10 @@ impl<'tx> InferCtxt<'tx> {
                 let fun = self.tx.get_function(id);
 
                 let (ret1, params1) = (
-                    self.instantiate(*ret1, &args),
+                    self.subst(*ret1, &args),
                     params1
                         .iter()
-                        .map(|it| self.instantiate(it.clone(), &args))
+                        .map(|it| self.subst(it.clone(), &args))
                         .collect::<Vec<Typ>>(),
                 );
                 let (ret2, params2) =
@@ -290,9 +288,7 @@ impl<'tx> InferCtxt<'tx> {
                 let params = def
                     .params
                     .iter()
-                    .map(|p| {
-                        self.pretty(&self.instantiate(p.clone(), args))
-                    })
+                    .map(|p| self.pretty(&self.subst(p.clone(), args)))
                     .collect::<Vec<_>>()
                     .join(", ");
                 let ret = self.pretty(&def.ret);

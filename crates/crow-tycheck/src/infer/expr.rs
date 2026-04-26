@@ -213,7 +213,7 @@ impl<'tx> InferCtxt<'tx> {
             .find(|f| f.name == name)
             .clone()
         {
-            Some(field) => self.instantiate(field.typ.clone(), &args),
+            Some(field) => self.subst(field.typ.clone(), &args),
             None => {
                 emit!(
                     self,
@@ -364,11 +364,11 @@ impl<'tx> InferCtxt<'tx> {
         let fun = self.tx.get_function(id);
 
         // Instantiating return type and param types
-        let ret = self.instantiate(fun.ret.clone(), &generics);
+        let ret = self.subst(fun.ret.clone(), &generics);
         let params = fun
             .params
             .iter()
-            .map(|p| self.instantiate(p.clone(), &generics))
+            .map(|p| self.subst(p.clone(), &generics))
             .collect::<Vec<Typ>>();
 
         // Checking arity
@@ -441,7 +441,7 @@ impl<'tx> InferCtxt<'tx> {
         // Instantiating field types
         let params = fields
             .into_iter()
-            .map(|f| self.instantiate(f.typ, &generic_args))
+            .map(|f| self.subst(f.typ, &generic_args))
             .collect::<Vec<Typ>>();
 
         // Checking arity
@@ -488,7 +488,7 @@ impl<'tx> InferCtxt<'tx> {
         let params = variant
             .fields
             .iter()
-            .map(|f| self.instantiate(f.clone(), &generic_args))
+            .map(|f| self.subst(f.clone(), &generic_args))
             .collect::<Vec<Typ>>();
 
         // Checking arity
