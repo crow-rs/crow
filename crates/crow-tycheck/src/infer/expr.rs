@@ -7,7 +7,7 @@ use crate::{
 };
 use crow_ast::{
     atom::{BinOp, Lit, Param, Publicity, UnOp},
-    expr::{Case, Expr, ExprKind, Pat, PatKind, UnpackParam},
+    expr::{Case, Expr, ExprKind, Pat, PatKind},
 };
 use crow_lex::token::Span;
 use crow_macros::emit;
@@ -745,9 +745,9 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers match expression case
-    fn infer_case(&mut self, values: &[Typ], case: &Case) -> Typ {
+    fn infer_case(&mut self, subjects: &[Typ], case: &Case) -> Typ {
         // Checking patterns
-        for (what, pat) in values.iter().zip(&case.pats) {
+        for (what, pat) in subjects.iter().zip(&case.pats) {
             self.check_pat(what.clone(), pat);
         }
 
@@ -756,12 +756,14 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers match expression
-    fn infer_match(&mut self, values: &[Expr], cases: &[Case]) -> Typ {
-        // Inferring matchable values
-        let values = values
+    fn infer_match(&mut self, subjects: &[Expr], cases: &[Case]) -> Typ {
+        // Inferring matchable subjects
+        let values = subjects
             .iter()
             .map(|v| self.infer_expr(v))
             .collect::<Vec<_>>();
+
+        // Performing
 
         // Performing exhaustiveness check
         // ...
@@ -800,8 +802,8 @@ impl<'tx> InferCtxt<'tx> {
                 self.infer_call(span, callee, args)
             }
             ExprKind::Function(params, ret) => self.infer_fun(params, ret),
-            ExprKind::Match(values, cases) => {
-                self.infer_match(values, cases)
+            ExprKind::Match(subjects, cases) => {
+                self.infer_match(subjects, cases)
             }
             ExprKind::Paren(expr) => self.infer_expr(expr),
             ExprKind::Block(stmts) => self.infer_block(stmts),

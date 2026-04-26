@@ -5,16 +5,6 @@ use crate::{
 };
 use crow_lex::token::Span;
 
-/// Represents unpack pattern param
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum UnpackParam {
-    /// Binding to a variable
-    Bind(String),
-
-    /// No binding
-    Wildcard,
-}
-
 /// Defines pattern kind
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PatKind {
@@ -25,7 +15,7 @@ pub enum PatKind {
     Variant(Expr),
 
     /// Represents enum fields unpack pattern
-    Unpack(Expr, Vec<UnpackParam>),
+    Unpack(Expr, Vec<Pat>),
 
     /// Represents bind pattern
     BindTo(String),

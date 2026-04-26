@@ -2,31 +2,13 @@
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
     atom::Lit,
-    expr::{Expr, ExprKind, Pat, PatKind, UnpackParam},
+    expr::{Expr, ExprKind, Pat, PatKind},
 };
 use crow_lex::token::TokenKind;
 use crow_macros::bail;
 
 /// Patterns parsing implementation
 impl<'s> Parser<'s> {
-    /// Unpack params parsing
-    fn unpack_params(&mut self) -> Vec<UnpackParam> {
-        self.sep_by(
-            TokenKind::Lparen,
-            TokenKind::Rparen,
-            TokenKind::Comma,
-            |p| {
-                if p.check(TokenKind::Wildcard) {
-                    p.bump();
-                    UnpackParam::Wildcard
-                } else {
-                    let id = p.expect(TokenKind::Id).lexeme;
-                    UnpackParam::Bind(id)
-                }
-            },
-        )
-    }
-
     /// Name parsing for enum pattern
     fn enum_pat_name(&mut self) -> Expr {
         // Parsing base identifier
@@ -69,7 +51,12 @@ impl<'s> Parser<'s> {
 
         // Checking for unpack postfix
         let kind = if self.check(TokenKind::Lparen) {
-            let params = self.unpack_params();
+            let params = self.sep_by(
+                TokenKind::Lparen,
+                TokenKind::Rparen,
+                TokenKind::Comma,
+                |p| p.pat(),
+            );
             PatKind::Unpack(id, params)
         } else {
             PatKind::Variant(id)
