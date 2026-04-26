@@ -8,8 +8,9 @@ fun sum(a: int, b: int) -> int {
 }
 
 fun main() {
-    let a = Some(3)
-    a = Some(true)
-    a = 3
-    let b = sum("hello", 1)
+    let a = Some(Some(3))
+    let b = match a {
+        .Some(.Some("hello")) -> 1,
+        _ -> 2
+    }
 }

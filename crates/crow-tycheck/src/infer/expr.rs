@@ -651,8 +651,9 @@ impl<'tx> InferCtxt<'tx> {
         &mut self,
         span: &Span,
         id: Id<Enum>,
+        args: &[Typ],
         variant: &Expr,
-        params: &[UnpackParam],
+        params: &[Pat],
     ) {
         // Inferring variant
         let variant = self.infer_expr(variant);
@@ -667,10 +668,17 @@ impl<'tx> InferCtxt<'tx> {
                 // Checking ids equality
                 if vid == id {
                     // Getting variant
-                    let variant = &en.variants[idx];
+                    let variant = en.variants[idx].clone();
 
                     // Checking len equality
-                    if variant.fields.len() != params.len() {
+                    if variant.fields.len() == params.len() {
+                        // Checking inner patterns
+                        for (typ, pat) in
+                            variant.clone().fields.into_iter().zip(params)
+                        {
+                            self.check_pat(self.subst(typ, &args), pat);
+                        }
+                    } else {
                         emit!(
                             self,
                             TypeckError::ArityMissmatch {
@@ -719,8 +727,10 @@ impl<'tx> InferCtxt<'tx> {
             (Typ::Enum(id, _), PatKind::Variant(variant)) => {
                 self.check_variant_pat(&pat.span, id, &variant)
             }
-            (Typ::Enum(id, _), PatKind::Unpack(variant, params)) => {
-                self.check_unpak_pat(&pat.span, id, &variant, &params);
+            (Typ::Enum(id, args), PatKind::Unpack(variant, params)) => {
+                self.check_unpak_pat(
+                    &pat.span, id, &args, &variant, &params,
+                );
             }
             // Binding pattern
             (typ, PatKind::BindTo(var)) => {
@@ -732,6 +742,8 @@ impl<'tx> InferCtxt<'tx> {
                     self.check_pat(typ.clone(), pat);
                 }
             }
+            // Wildcard pattern
+            (_, PatKind::Wildcard) => {}
             // Otherwise, raising error
             (typ, _) => emit!(
                 self,
