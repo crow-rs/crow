@@ -3,7 +3,7 @@ use crate::{ctxt::typ::TypesCtxt, resolve::Resolver};
 use crow_ast::item::Module;
 
 /// Module checking context used during module typechecking
-pub struct SolveCtxt<'tx> {
+pub struct InferCtxt<'tx> {
     /// Types context
     pub(crate) tx: &'tx mut TypesCtxt,
 
@@ -15,7 +15,7 @@ pub struct SolveCtxt<'tx> {
 }
 
 /// Implementation
-impl<'tx> SolveCtxt<'tx> {
+impl<'tx> InferCtxt<'tx> {
     /// Creates new check context
     pub fn new(tx: &'tx mut TypesCtxt) -> Self {
         Self {

@@ -1,5 +1,5 @@
 /// Imports
-use crate::{ctxt::check::SolveCtxt, typ::Typ};
+use crate::{ctxt::check::InferCtxt, typ::Typ};
 use crow_ast::{
     atom::TypeHint,
     expr::Expr,
@@ -8,7 +8,7 @@ use crow_ast::{
 use crow_lex::token::Span;
 
 /// Implementation of statements inference
-impl<'tx> SolveCtxt<'tx> {
+impl<'tx> InferCtxt<'tx> {
     /// Checks let statement
     pub fn check_let_stmt(&mut self, span: Span, name: String, hint: TypeHint, expr: Expr) {
         // Inferring types

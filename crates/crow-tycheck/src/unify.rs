@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::check::SolveCtxt,
+    ctxt::check::InferCtxt,
     errors::TypeckError,
     typ::{Meta, Typ, Var},
 };
@@ -18,7 +18,7 @@ pub enum UnifyError {
 }
 
 /// Implementation of coercion solving
-impl<'tx> SolveCtxt<'tx> {
+impl<'tx> InferCtxt<'tx> {
     /// Generates fresh unbound type variable
     pub fn fresh(&mut self) -> Id<Var> {
         self.tx.insert_var(Var::Unbound)
@@ -83,7 +83,7 @@ impl<'tx> SolveCtxt<'tx> {
     }
 
     /// Binds type variable `id` to `typ` if it is still unbound
-    pub fn subst(&mut self, id: Id<Var>, typ: Typ) {
+    fn bind(&mut self, id: Id<Var>, typ: Typ) {
         let var = self.tx.get_var_mut(id);
         if let Var::Unbound = var {
             *var = Var::Bound(typ);
@@ -219,7 +219,7 @@ impl<'tx> SolveCtxt<'tx> {
                 if self.occurs(id, &ty) {
                     Err(UnifyError::Occurs)
                 } else {
-                    self.subst(id, ty);
+                    self.bind(id, ty);
                     Ok(())
                 }
             }

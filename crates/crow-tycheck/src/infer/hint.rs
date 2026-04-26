@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::check::SolveCtxt,
+    ctxt::check::InferCtxt,
     def::{Def, Enum, Struct},
     errors::TypeckError,
     typ::Typ,
@@ -11,7 +11,7 @@ use crow_macros::{bail, emit};
 use id_arena::Id;
 
 /// Implementation of type-hint inference
-impl<'tx> SolveCtxt<'tx> {
+impl<'tx> InferCtxt<'tx> {
     /// Checks generics arity
     fn check_generics_arity(&self, span: &Span, expected: usize, got: usize) {
         if expected != got {

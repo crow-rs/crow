@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::check::SolveCtxt,
+    ctxt::check::InferCtxt,
     def::{Def, Enum, Function, Module, Struct, Variant},
     errors::TypeckError,
     typ::{Meta, Typ},
@@ -14,7 +14,7 @@ use crow_macros::emit;
 use id_arena::Id;
 
 /// Implementation of expressions inference
-impl<'tx> SolveCtxt<'tx> {
+impl<'tx> InferCtxt<'tx> {
     /// Infers literal
     fn infer_lit(&mut self, lit: Lit) -> Typ {
         match lit {
