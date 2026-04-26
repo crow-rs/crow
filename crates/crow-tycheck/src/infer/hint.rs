@@ -13,7 +13,12 @@ use id_arena::Id;
 /// Implementation of type-hint inference
 impl<'tx> InferCtxt<'tx> {
     /// Checks generics arity
-    fn check_generics_arity(&self, span: &Span, expected: usize, got: usize) {
+    fn check_generics_arity(
+        &self,
+        span: &Span,
+        expected: usize,
+        got: usize,
+    ) {
         if expected != got {
             bail!(TypeckError::ArityMissmatch {
                 src: span.0.clone(),
@@ -25,7 +30,12 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Ensures no generics given
-    fn ensure_no_generics<F>(&mut self, span: &Span, got: usize, typ: F) -> Typ
+    fn ensure_no_generics<F>(
+        &mut self,
+        span: &Span,
+        got: usize,
+        typ: F,
+    ) -> Typ
     where
         F: FnOnce() -> Typ,
     {
@@ -33,11 +43,16 @@ impl<'tx> InferCtxt<'tx> {
         typ()
     }
 
-    /// Makes enum
-    fn make_enum(&mut self, span: Span, e: Id<Enum>, args: Vec<TypeHint>) -> Typ {
+    /// Makes enum with given args
+    fn make_enum(
+        &mut self,
+        span: &Span,
+        e: Id<Enum>,
+        args: &[TypeHint],
+    ) -> Typ {
         // Checking arity
         let params = self.tx.get_enum(e).generics.clone();
-        self.check_generics_arity(&span, params.len(), args.len());
+        self.check_generics_arity(span, params.len(), args.len());
 
         // Making fresh args
         let substs = args
@@ -49,11 +64,16 @@ impl<'tx> InferCtxt<'tx> {
         Typ::Enum(e, substs)
     }
 
-    /// Makes struct
-    fn make_struct(&mut self, span: Span, s: Id<Struct>, args: Vec<TypeHint>) -> Typ {
+    /// Makes struct with given args
+    fn make_struct(
+        &mut self,
+        span: &Span,
+        s: Id<Struct>,
+        args: &[TypeHint],
+    ) -> Typ {
         // Checking arity
         let params = self.tx.get_struct(s).generics.clone();
-        self.check_generics_arity(&span, params.len(), args.len());
+        self.check_generics_arity(span, params.len(), args.len());
 
         // Making fresh args
         let substs = args
@@ -66,29 +86,48 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers local type hint
-    fn infer_local_type_hint(&mut self, span: Span, name: String, args: Vec<TypeHint>) -> Typ {
-        match name.as_str() {
+    fn infer_local_type_hint(
+        &mut self,
+        span: &Span,
+        name: &str,
+        args: &[TypeHint],
+    ) -> Typ {
+        match name {
             // Primitive types
-            "int" => self.ensure_no_generics(&span, args.len(), || Typ::Int),
-            "float" => self.ensure_no_generics(&span, args.len(), || Typ::Float),
-            "bool" => self.ensure_no_generics(&span, args.len(), || Typ::Bool),
-            "str" => self.ensure_no_generics(&span, args.len(), || Typ::Str),
+            "int" => {
+                self.ensure_no_generics(&span, args.len(), || Typ::Int)
+            }
+            "float" => {
+                self.ensure_no_generics(&span, args.len(), || Typ::Float)
+            }
+            "bool" => {
+                self.ensure_no_generics(&span, args.len(), || Typ::Bool)
+            }
+            "str" => {
+                self.ensure_no_generics(&span, args.len(), || Typ::Str)
+            }
 
             // User-defined types
             _ => {
                 // Trying to resolve generic
                 match self.resolver.resolve_generic(&name) {
                     Some(idx) => {
-                        self.ensure_no_generics(&span, args.len(), || Typ::Generic(name, idx))
+                        self.ensure_no_generics(&span, args.len(), || {
+                            Typ::Generic(name.to_owned(), idx)
+                        })
                     }
                     // If no generic found, trying to resolve module definition
                     None => match self.resolver.resolve_mod_def(&name) {
-                        Some(Def::Enum(e)) => self.make_enum(span, e, args),
-                        Some(Def::Struct(s)) => self.make_struct(span, s, args),
+                        Some(Def::Enum(e)) => {
+                            self.make_enum(span, e, args)
+                        }
+                        Some(Def::Struct(s)) => {
+                            self.make_struct(span, s, args)
+                        }
                         _ => bail!(TypeckError::UndefinedType {
-                            src: span.0,
-                            span: span.1.into(),
-                            name
+                            src: span.0.clone(),
+                            span: span.1.clone().into(),
+                            name: name.to_owned(),
                         }),
                     },
                 }
@@ -99,31 +138,31 @@ impl<'tx> InferCtxt<'tx> {
     /// Infers module type hint
     fn infer_mod_type_hint(
         &mut self,
-        span: Span,
-        module: String,
-        name: String,
-        args: Vec<TypeHint>,
+        span: &Span,
+        module: &str,
+        name: &str,
+        args: &[TypeHint],
     ) -> Typ {
         // Getting module
-        let module = match self.resolver.resolve_mod(&module) {
+        let module = match self.resolver.resolve_mod(module) {
             Some(m) => m,
             None => bail!(TypeckError::UndefinedMod {
-                src: span.0,
-                span: span.1.into(),
-                name: module
+                src: span.0.clone(),
+                span: span.1.clone().into(),
+                name: module.to_owned()
             }),
         };
 
         // Getting definition
-        match self.tx.get_mod(module).defs.get(&name) {
+        match self.tx.get_mod(module).defs.get(name) {
             // If publicity is private
             Some((Publicity::Priv, Def::Enum(_) | Def::Struct(_))) => {
                 emit!(
                     self,
                     TypeckError::PrivateType {
-                        src: span.0,
-                        span: span.1.into(),
-                        name,
+                        src: span.0.clone(),
+                        span: span.1.clone().into(),
+                        name: name.to_owned(),
                     }
                 );
                 Typ::Error
@@ -133,15 +172,19 @@ impl<'tx> InferCtxt<'tx> {
             Some((_, Def::Struct(s))) => self.make_struct(span, *s, args),
             // If type is undefined
             _ => bail!(TypeckError::UndefinedType {
-                src: span.0,
-                span: span.1.into(),
-                name
+                src: span.0.clone(),
+                span: span.1.clone().into(),
+                name: name.to_owned(),
             }),
         }
     }
 
     /// Infers function type hint
-    fn infer_fun_type_hint(&mut self, params: Vec<TypeHint>, ret: TypeHint) -> Typ {
+    fn infer_fun_type_hint(
+        &mut self,
+        params: &[TypeHint],
+        ret: &TypeHint,
+    ) -> Typ {
         let params = params
             .into_iter()
             .map(|p| self.infer_type_hint(p))
@@ -152,16 +195,20 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers type hint
-    pub fn infer_type_hint(&mut self, hint: TypeHint) -> Typ {
+    pub fn infer_type_hint(&mut self, hint: &TypeHint) -> Typ {
         match hint {
-            TypeHint::Local { span, name, args } => self.infer_local_type_hint(span, name, args),
+            TypeHint::Local { span, name, args } => {
+                self.infer_local_type_hint(span, name, args)
+            }
             TypeHint::Mod {
                 span,
                 module,
                 name,
                 args,
             } => self.infer_mod_type_hint(span, module, name, args),
-            TypeHint::Fun { params, ret, .. } => self.infer_fun_type_hint(params, *ret),
+            TypeHint::Fun { params, ret, .. } => {
+                self.infer_fun_type_hint(params, ret)
+            }
             TypeHint::Unit(_) => Typ::Unit,
             TypeHint::Infer => Typ::Var(self.fresh()),
         }

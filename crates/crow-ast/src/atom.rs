@@ -52,7 +52,7 @@ pub enum AssignOp {
 }
 
 /// Unary operator
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnOp {
     Neg,  // -
     Bang, // !

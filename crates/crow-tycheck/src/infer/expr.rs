@@ -6,7 +6,7 @@ use crate::{
     typ::{Meta, Typ},
 };
 use crow_ast::{
-    atom::{BinOp, Lit, Publicity, UnOp},
+    atom::{BinOp, Lit, Param, Publicity, UnOp},
     expr::{Expr, ExprKind},
 };
 use crow_lex::token::Span;
@@ -16,7 +16,7 @@ use id_arena::Id;
 /// Implementation of expressions inference
 impl<'tx> InferCtxt<'tx> {
     /// Infers literal
-    fn infer_lit(&mut self, lit: Lit) -> Typ {
+    fn infer_lit(&mut self, lit: &Lit) -> Typ {
         match lit {
             Lit::Int(_) => Typ::Int,
             Lit::Float(_) => Typ::Float,
@@ -27,7 +27,12 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers unary expression
-    fn infer_unary(&mut self, span: Span, un_op: UnOp, expr: Expr) -> Typ {
+    fn infer_unary(
+        &mut self,
+        span: Span,
+        un_op: UnOp,
+        expr: &Expr,
+    ) -> Typ {
         let typ = self.infer_expr(expr);
         match (un_op, typ) {
             // Number neg operator
@@ -55,8 +60,8 @@ impl<'tx> InferCtxt<'tx> {
         &mut self,
         span: Span,
         bin_op: BinOp,
-        lhs: Expr,
-        rhs: Expr,
+        lhs: &Expr,
+        rhs: &Expr,
     ) -> Typ {
         let lhs = self.infer_expr(lhs);
         let rhs = self.infer_expr(rhs);
@@ -116,7 +121,7 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers assign expression
-    fn infer_assign(&mut self, span: Span, what: Expr, to: Expr) -> Typ {
+    fn infer_assign(&mut self, span: Span, what: &Expr, to: &Expr) -> Typ {
         let what = self.infer_expr(what);
         let to = self.infer_expr(to);
 
@@ -127,9 +132,9 @@ impl<'tx> InferCtxt<'tx> {
     /// Infers if expression
     fn infer_if(
         &mut self,
-        cond: Expr,
-        then: Expr,
-        else_: Option<Box<Expr>>,
+        cond: &Expr,
+        then: &Expr,
+        else_: &Option<Box<Expr>>,
     ) -> Typ {
         // Checking that condition type is bool
         let (cond_span, cond_typ) =
@@ -142,7 +147,7 @@ impl<'tx> InferCtxt<'tx> {
         // Inferring else block, is presented
         if let Some(else_) = else_ {
             let (else_span, else_typ) =
-                (else_.span.clone(), self.infer_expr(*else_));
+                (else_.span.clone(), self.infer_expr(else_));
             self.eq(&else_span, then_typ.clone(), else_typ.clone());
         }
 
@@ -150,7 +155,7 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers variable expression
-    fn infer_var(&mut self, span: Span, name: String) -> Typ {
+    fn infer_var(&mut self, span: Span, name: &str) -> Typ {
         // Local variable
         match self.resolver.resolve_local_def(&name) {
             Some(typ) => typ,
@@ -187,7 +192,7 @@ impl<'tx> InferCtxt<'tx> {
                             TypeckError::UndefinedName {
                                 src: span.0,
                                 span: span.1.into(),
-                                name
+                                name: name.to_owned()
                             }
                         );
                         Typ::Error
@@ -203,7 +208,7 @@ impl<'tx> InferCtxt<'tx> {
         span: Span,
         id: Id<Struct>,
         args: Vec<Typ>,
-        name: String,
+        name: &str,
     ) -> Typ {
         match self
             .tx
@@ -220,7 +225,7 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::UndefinedField {
                         src: span.0,
                         span: span.1.into(),
-                        name
+                        name: name.to_owned()
                     }
                 );
                 Typ::Error
@@ -233,7 +238,7 @@ impl<'tx> InferCtxt<'tx> {
         &mut self,
         span: Span,
         id: Id<Enum>,
-        name: String,
+        name: &str,
     ) -> Typ {
         let en = self.tx.get_enum(id);
         match en.variants.iter().enumerate().find(|(_, v)| v.name == name)
@@ -253,7 +258,7 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::UndefinedField {
                         src: span.0,
                         span: span.1.into(),
-                        name
+                        name: name.to_owned()
                     }
                 );
                 Typ::Error
@@ -266,9 +271,9 @@ impl<'tx> InferCtxt<'tx> {
         &mut self,
         span: Span,
         id: Id<Module>,
-        name: String,
+        name: &str,
     ) -> Typ {
-        match self.tx.get_mod(id).defs.get(&name).cloned() {
+        match self.tx.get_mod(id).defs.get(name).cloned() {
             Some((p, def)) => {
                 let typ = match def {
                     Def::Struct(id) => Typ::Meta(Meta::Struct(id)),
@@ -293,7 +298,7 @@ impl<'tx> InferCtxt<'tx> {
                             TypeckError::PrivateModField {
                                 src: span.0,
                                 span: span.1.into(),
-                                name,
+                                name: name.to_owned(),
                                 module: self.tx.get_mod(id).name.clone()
                             }
                         );
@@ -307,7 +312,7 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::UndefinedField {
                         src: span.0,
                         span: span.1.into(),
-                        name
+                        name: name.to_owned()
                     }
                 );
                 Typ::Error
@@ -319,8 +324,8 @@ impl<'tx> InferCtxt<'tx> {
     fn infer_field(
         &mut self,
         span: Span,
-        container: Expr,
-        name: String,
+        container: &Expr,
+        name: &str,
     ) -> Typ {
         // Matching container
         let container = self.infer_expr(container);
@@ -344,7 +349,7 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::UndefinedField {
                         src: span.0,
                         span: span.1.into(),
-                        name
+                        name: name.to_owned()
                     }
                 );
                 Typ::Error
@@ -518,8 +523,8 @@ impl<'tx> InferCtxt<'tx> {
     fn infer_call(
         &mut self,
         span: Span,
-        callee: Expr,
-        args: Vec<Expr>,
+        callee: &Expr,
+        args: &[Expr],
     ) -> Typ {
         // Inferring callee and args
         let callee = self.infer_expr(callee);
@@ -561,36 +566,76 @@ impl<'tx> InferCtxt<'tx> {
         }
     }
 
+    /// Infers function expression
+    fn infer_fun(&mut self, params: &[Param], body: &Expr) -> Typ {
+        // Inferring params
+        let param_types: Vec<_> = params
+            .iter()
+            .map(|p| self.infer_type_hint(&p.hint))
+            .collect();
+
+        // Entering function scope
+        self.resolver.enter_scope();
+
+        // Defining params
+        params.iter().zip(param_types.clone()).for_each(|(p, t)| {
+            self.resolver.declare_local_def(&p.name, t)
+        });
+
+        // Checking body
+        let ret = self.infer_expr(body);
+
+        // Exiting function scope
+        self.resolver.exit_scope();
+
+        // Done!
+        Typ::FunRef(Box::new(ret), param_types)
+    }
+
+    /// Infers todo or panic expression
+    fn infer_todo_or_panic(
+        &mut self,
+        span: Span,
+        text: &Option<Box<Expr>>,
+    ) -> Typ {
+        if let Some(text) = text {
+            let text = self.infer_expr(text);
+            self.eq(&span, text, Typ::Str);
+        }
+
+        Typ::Var(self.fresh())
+    }
+
     /// Infers expression
-    pub fn infer_expr(&mut self, expr: Expr) -> Typ {
-        let span = expr.span;
-        let typ = match expr.kind {
+    pub fn infer_expr(&mut self, expr: &Expr) -> Typ {
+        let span = expr.span.clone();
+        let typ = match &expr.kind {
             ExprKind::Lit(lit) => self.infer_lit(lit),
             ExprKind::Unary(expr, un_op) => {
-                self.infer_unary(span, un_op, *expr)
+                self.infer_unary(span, *un_op, expr)
             }
             ExprKind::Bin(lhs, rhs, bin_op) => {
-                self.infer_binary(span, bin_op, *lhs, *rhs)
+                self.infer_binary(span, *bin_op, lhs, rhs)
             }
             ExprKind::Assign(what, to) => {
-                self.infer_assign(span, *what, *to)
+                self.infer_assign(span, what, to)
             }
             ExprKind::If(cond, then, else_) => {
-                self.infer_if(*cond, *then, else_)
+                self.infer_if(cond, then, else_)
             }
             ExprKind::Var(name) => self.infer_var(span, name),
             ExprKind::Field(container, name) => {
-                self.infer_field(span, *container, name)
+                self.infer_field(span, container, name)
             }
             ExprKind::Call(callee, args) => {
-                self.infer_call(span, *callee, args)
+                self.infer_call(span, callee, args)
             }
-            ExprKind::Function(params, expr) => todo!(),
+            ExprKind::Function(params, ret) => self.infer_fun(params, ret),
             ExprKind::Match(expr, cases) => todo!(),
-            ExprKind::Paren(expr) => todo!(),
+            ExprKind::Paren(expr) => self.infer_expr(expr),
             ExprKind::Block(stmts) => self.infer_block(stmts),
-            ExprKind::Todo(expr) => todo!(),
-            ExprKind::Panic(expr) => todo!(),
+            ExprKind::Todo(expr) => self.infer_todo_or_panic(span, expr),
+            ExprKind::Panic(expr) => self.infer_todo_or_panic(span, expr),
         };
         self.apply(typ)
     }

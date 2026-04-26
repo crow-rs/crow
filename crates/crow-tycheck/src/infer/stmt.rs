@@ -10,7 +10,13 @@ use crow_lex::token::Span;
 /// Implementation of statements inference
 impl<'tx> InferCtxt<'tx> {
     /// Checks let statement
-    pub fn check_let_stmt(&mut self, span: Span, name: String, hint: TypeHint, expr: Expr) {
+    pub fn check_let_stmt(
+        &mut self,
+        span: &Span,
+        name: &str,
+        hint: &TypeHint,
+        expr: &Expr,
+    ) {
         // Inferring types
         let expr_typ = self.infer_expr(expr);
         let typ = self.infer_type_hint(hint);
@@ -23,10 +29,10 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers statement
-    pub fn infer_stmt(&mut self, stmt: Stmt) -> Typ {
-        match stmt.kind {
+    pub fn infer_stmt(&mut self, stmt: &Stmt) -> Typ {
+        match &stmt.kind {
             StmtKind::Let(name, hint, expr) => {
-                self.check_let_stmt(stmt.span, name, hint, expr);
+                self.check_let_stmt(&stmt.span, name, hint, expr);
                 Typ::Unit
             }
             StmtKind::Expr(expr) => self.infer_expr(expr),
@@ -34,19 +40,21 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Infers block
-    pub fn infer_block(&mut self, mut block: Vec<Stmt>) -> Typ {
-        // Getting last statement
-        let last = block.pop();
+    pub fn infer_block(&mut self, block: &[Stmt]) -> Typ {
+        // Splitting block to head and last
+        match block.split_last() {
+            // If block is not empty
+            Some((last, head)) => {
+                // Checking head block statements
+                for stmt in head {
+                    self.infer_stmt(stmt);
+                }
 
-        // Iterating over statements
-        for stmt in block {
-            self.infer_stmt(stmt);
-        }
-
-        // Matching last statement
-        match last {
-            Some(stmt) => self.infer_stmt(stmt),
-            None => Typ::Unit,
+                // Inferring last block statement
+                self.infer_stmt(last)
+            }
+            // If block is empty
+            _ => Typ::Unit,
         }
     }
 }

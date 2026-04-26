@@ -26,9 +26,9 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Performs type check
-    pub fn solve(&mut self, module: Module) {
+    pub fn solve(&mut self, module: &Module) {
         self.early_pass(&module);
         self.mid_pass(&module);
-        self.late_pass(module);
+        self.late_pass(&module);
     }
 }

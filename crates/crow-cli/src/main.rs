@@ -1,5 +1,3 @@
-use std::{fs, path::PathBuf, sync::Arc};
-
 use camino::Utf8PathBuf;
 use crow_driver::{Driver, DriverConfig};
 use tracing::level_filters::LevelFilter;
@@ -11,6 +9,18 @@ use tracing_subscriber::{
 };
 
 fn main() {
+    let _ = miette::set_hook(Box::new(|_| {
+        Box::new(
+            miette::MietteHandlerOpts::new()
+                .terminal_links(true)
+                .unicode(false)
+                .rgb_colors(miette::RgbColors::Preferred)
+                .show_related_errors_as_nested()
+                .context_lines(3)
+                .build(),
+        )
+    }));
+
     let filter: EnvFilter = EnvFilter::builder()
         .with_env_var("WATT_LOG")
         .with_default_directive(LevelFilter::OFF.into())

@@ -11,7 +11,7 @@ use crow_macros::{bail, bug};
 use crow_parse::Parser;
 use crow_tycheck::ctxt::{
     check::InferCtxt,
-    typ::{self, TypesCtxt},
+    typ::TypesCtxt
 };
 use miette::NamedSource;
 use petgraph::{Direction, prelude::DiGraphMap};

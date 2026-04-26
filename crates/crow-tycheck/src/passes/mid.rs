@@ -29,7 +29,7 @@ impl<'tx> InferCtxt<'tx> {
                     .map(|f| Field {
                         span: f.span.clone(),
                         name: f.name.clone(),
-                        typ: self.infer_type_hint(f.hint.clone()),
+                        typ: self.infer_type_hint(&f.hint),
                     })
                     .collect()
             }
@@ -60,15 +60,17 @@ impl<'tx> InferCtxt<'tx> {
                         fields: v
                             .fields
                             .iter()
-                            .map(|hint| self.infer_type_hint(hint.clone()))
+                            .map(|hint| self.infer_type_hint(&hint))
                             .collect(),
                     })
                     .collect();
 
                 // Defining variant constructors
                 for (idx, variant) in e.variants.iter().enumerate() {
-                    self.resolver
-                        .declare_mod_def(&variant.name, (p, Def::Variant(id, idx)));
+                    self.resolver.declare_mod_def(
+                        &variant.name,
+                        (p, Def::Variant(id, idx)),
+                    );
                 }
             }
             _ => unreachable!(),
@@ -88,14 +90,16 @@ impl<'tx> InferCtxt<'tx> {
             params: f
                 .params
                 .iter()
-                .map(|param| self.infer_type_hint(param.hint.clone()))
+                .map(|param| self.infer_type_hint(&param.hint))
                 .collect(),
-            ret: self.infer_type_hint(f.ret.clone()),
+            ret: self.infer_type_hint(&f.ret),
         };
         self.resolver.exit_generics();
         // Declaring function
-        self.resolver
-            .declare_mod_def(&f.name, (p, Def::Function(self.tx.insert_function(def))));
+        self.resolver.declare_mod_def(
+            &f.name,
+            (p, Def::Function(self.tx.insert_function(def))),
+        );
     }
 
     /// Performs mid analysis of native function:
@@ -110,14 +114,16 @@ impl<'tx> InferCtxt<'tx> {
             params: f
                 .params
                 .iter()
-                .map(|param| self.infer_type_hint(param.hint.clone()))
+                .map(|param| self.infer_type_hint(&param.hint))
                 .collect(),
-            ret: self.infer_type_hint(f.ret.clone()),
+            ret: self.infer_type_hint(&f.ret),
         };
         self.resolver.exit_generics();
         // Declaring function
-        self.resolver
-            .declare_mod_def(&f.name, (p, Def::Function(self.tx.insert_function(def))));
+        self.resolver.declare_mod_def(
+            &f.name,
+            (p, Def::Function(self.tx.insert_function(def))),
+        );
     }
 
     /// Performs mid analysis of module
@@ -128,10 +134,16 @@ impl<'tx> InferCtxt<'tx> {
             match &item.kind {
                 // Processing struct and enum
                 ItemKind::Struct(s) => self.mid_analyze_struct(s),
-                ItemKind::Enum(e) => self.mid_analyze_enum(item.publicity, e),
+                ItemKind::Enum(e) => {
+                    self.mid_analyze_enum(item.publicity, e)
+                }
                 // Processing functions
-                ItemKind::Fun(f) => self.mid_analyze_fun(item.publicity, f),
-                ItemKind::Native(n) => self.mid_analyze_native_fun(item.publicity, n),
+                ItemKind::Fun(f) => {
+                    self.mid_analyze_fun(item.publicity, f)
+                }
+                ItemKind::Native(n) => {
+                    self.mid_analyze_native_fun(item.publicity, n)
+                }
                 // Skipping constants for now
                 ItemKind::Const(_) => {}
             }
