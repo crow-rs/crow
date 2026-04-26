@@ -7,7 +7,7 @@ use crate::{
 };
 use crow_ast::{
     atom::{BinOp, Lit, Param, Publicity, UnOp},
-    expr::{Expr, ExprKind},
+    expr::{Case, Expr, ExprKind, Pat, PatKind, UnpackParam},
 };
 use crow_lex::token::Span;
 use crow_macros::emit;
@@ -606,6 +606,162 @@ impl<'tx> InferCtxt<'tx> {
         Typ::Var(self.fresh())
     }
 
+    /// Checks variant pattern
+    fn check_variant_pat(
+        &mut self,
+        span: &Span,
+        id: Id<Enum>,
+        variant: &Expr,
+    ) {
+        // Inferring variant
+        let variant = self.infer_expr(variant);
+
+        // Checking types equality
+        match variant {
+            // If variant is an enum variant
+            Typ::Meta(Meta::Variant(vid, _)) => {
+                // Checking id mismatch
+                if vid != id {
+                    emit!(
+                        self,
+                        TypeckError::InvalidPatVariant {
+                            src: span.0.clone(),
+                            span: span.1.clone().into(),
+                            en: self.tx.get_enum(id).name.clone()
+                        }
+                    )
+                }
+            }
+            // If not
+            other => {
+                emit!(
+                    self,
+                    TypeckError::InvalidPat {
+                        src: span.0.clone(),
+                        span: span.1.clone().into(),
+                        t: self.pretty(&other)
+                    }
+                )
+            }
+        }
+    }
+
+    /// Checks unpak pattern
+    fn check_unpak_pat(
+        &mut self,
+        span: &Span,
+        id: Id<Enum>,
+        variant: &Expr,
+        params: &[UnpackParam],
+    ) {
+        // Inferring variant
+        let variant = self.infer_expr(variant);
+
+        // Checking types equality
+        match variant {
+            // If variant is an enum variant
+            Typ::Meta(Meta::Variant(vid, idx)) => {
+                // Getting enum
+                let en = self.tx.get_enum(id);
+
+                // Checking ids equality
+                if vid == id {
+                    // Getting variant
+                    let variant = &en.variants[idx];
+
+                    // Checking len equality
+                    if variant.fields.len() != params.len() {
+                        emit!(
+                            self,
+                            TypeckError::ArityMissmatch {
+                                src: span.0.clone(),
+                                span: span.1.clone().into(),
+                                expected: variant.fields.len(),
+                                got: params.len()
+                            }
+                        )
+                    }
+                } else {
+                    emit!(
+                        self,
+                        TypeckError::InvalidPatVariant {
+                            src: span.0.clone(),
+                            span: span.1.clone().into(),
+                            en: en.name.clone()
+                        }
+                    )
+                }
+            }
+            // If not
+            other => {
+                emit!(
+                    self,
+                    TypeckError::InvalidPat {
+                        src: span.0.clone(),
+                        span: span.1.clone().into(),
+                        t: self.pretty(&other)
+                    }
+                )
+            }
+        }
+    }
+
+    /// Checks match expression pattern
+    fn check_pat(&mut self, what: Typ, pat: &Pat) {
+        // Matching patterns
+        match (what, &pat.kind) {
+            // Skipping literals
+            (Typ::Bool, PatKind::Lit(Lit::Bool(_)))
+            | (Typ::Int, PatKind::Lit(Lit::Int(_)))
+            | (Typ::Float, PatKind::Lit(Lit::Float(_)))
+            | (Typ::Str, PatKind::Lit(Lit::String(_))) => {}
+            // Enum patterns
+            (Typ::Enum(id, _), PatKind::Variant(variant)) => {
+                self.check_variant_pat(&pat.span, id, &variant)
+            }
+            (Typ::Enum(id, _), PatKind::Unpack(variant, params)) => {
+                self.check_unpak_pat(&pat.span, id, &variant, &params);
+            }
+            // Binding pattern
+            (typ, PatKind::BindTo(var)) => {
+                self.resolver.declare_local_def(&var, typ);
+            }
+            // Or pattern
+            (typ, PatKind::Or(vec)) => {
+                for pat in vec {
+                    self.check_pat(typ.clone(), pat);
+                }
+            }
+            // Otherwise, raising error
+            (typ, _) => emit!(
+                self,
+                TypeckError::InvalidPat {
+                    src: pat.span.0.clone(),
+                    span: pat.span.1.clone().into(),
+                    t: self.pretty(&typ)
+                }
+            ),
+        }
+    }
+
+    /// Infers match expression case
+    fn infer_case(&mut self, what: &[Typ], case: &Case) -> Typ {
+        // Checking patterns
+        for (what, pat) in what.iter().zip(&case.pats) {
+            self.check_pat(what.clone(), pat);
+        }
+
+        // Inferring body
+        self.infer_expr(&case.body)
+    }
+
+    /// Infers match expression
+    fn infer_match(&mut self, what: &[Expr], cases: &[Case]) -> Typ {
+        // Performing exhaustiveness check
+        // ...
+        
+    }
+
     /// Infers expression
     pub fn infer_expr(&mut self, expr: &Expr) -> Typ {
         let span = expr.span.clone();
@@ -631,7 +787,7 @@ impl<'tx> InferCtxt<'tx> {
                 self.infer_call(span, callee, args)
             }
             ExprKind::Function(params, ret) => self.infer_fun(params, ret),
-            ExprKind::Match(expr, cases) => todo!(),
+            ExprKind::Match(what, cases) => self.infer_match(what, cases),
             ExprKind::Paren(expr) => self.infer_expr(expr),
             ExprKind::Block(stmts) => self.infer_block(stmts),
             ExprKind::Todo(expr) => self.infer_todo_or_panic(span, expr),

@@ -133,6 +133,24 @@ pub(crate) enum TypeckError {
         t: String,
         op: UnOp,
     },
+    #[error("invalid pattern for type `{t}`")]
+    #[diagnostic(code(typeck::invalid_pat))]
+    InvalidPat {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("this pattern in invalid.")]
+        span: SourceSpan,
+        t: String,
+    },
+    #[error("invalid pattern for enum `{en}`")]
+    #[diagnostic(code(typeck::invalid_pat_variant))]
+    InvalidPatVariant {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("this pattern in invalid.")]
+        span: SourceSpan,
+        en: String,
+    },
 }
 
 /// Exhaustiveness error

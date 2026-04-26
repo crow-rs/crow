@@ -196,7 +196,7 @@ impl<'tx> InferCtxt<'tx> {
             // Unifying type variables
             (Typ::Var(a), b) | (b, Typ::Var(a)) => self.unify_var(a, b),
 
-            // Other -> error
+            // Other, raising error
             (_, _) => Err(UnifyError::Mismatch),
         }
     }

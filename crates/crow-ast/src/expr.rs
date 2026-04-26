@@ -83,7 +83,7 @@ pub enum ExprKind {
     Function(Vec<Param>, Box<Expr>),
 
     /// Represents match expression
-    Match(Box<Expr>, Vec<Case>),
+    Match(Vec<Expr>, Vec<Case>),
 
     /// Represents paren expression
     Paren(Box<Expr>),

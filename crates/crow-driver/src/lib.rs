@@ -9,10 +9,7 @@ use crow_ast::item;
 use crow_lex::Lexer;
 use crow_macros::{bail, bug};
 use crow_parse::Parser;
-use crow_tycheck::ctxt::{
-    check::InferCtxt,
-    typ::TypesCtxt
-};
+use crow_tycheck::ctxt::{check::InferCtxt, typ::TypesCtxt};
 use miette::NamedSource;
 use petgraph::{Direction, prelude::DiGraphMap};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -57,7 +54,8 @@ impl Driver {
         info!("loading module `{path}`");
         let name = io::module_name(&self.config.income, &path);
         let code = io::read(&path);
-        let source = Arc::new(NamedSource::new(name.clone(), code.clone()));
+        let source =
+            Arc::new(NamedSource::new(name.clone(), code.clone()));
 
         // Parsing module
         let lexer = Lexer::new(source.clone(), &code);
@@ -90,7 +88,9 @@ impl Driver {
                 n,
                 m.uses
                     .iter()
-                    .filter(|d| loaded_modules.contains_key(&d.path.module))
+                    .filter(|d| {
+                        loaded_modules.contains_key(&d.path.module)
+                    })
                     .map(|d| d.path.module.as_str())
                     .collect(),
             );
@@ -125,10 +125,16 @@ impl Driver {
     }
 
     /// Performs toposort on imports/dependencies graph
-    fn perform_toposort<'s>(&self, deps: HashMap<&'s str, Vec<&'s str>>) -> Vec<&'s str> {
+    fn perform_toposort<'s>(
+        &self,
+        deps: HashMap<&'s str, Vec<&'s str>>,
+    ) -> Vec<&'s str> {
         // Creating graph for toposorting
         let mut deps_graph: DiGraphMap<&str, ()> =
-            petgraph::prelude::DiGraphMap::with_capacity(deps.len(), deps.len() * 5);
+            petgraph::prelude::DiGraphMap::with_capacity(
+                deps.len(),
+                deps.len() * 5,
+            );
 
         // Adding nodes
         for key in deps.keys() {
@@ -167,11 +173,17 @@ impl Driver {
                     bail!(DriverError::FoundImportsCycle {
                         a: match path.first() {
                             Some(some) => (*some).to_string(),
-                            None => bug!(format!("cycle path has wrong length: {}", path.len())),
+                            None => bug!(format!(
+                                "cycle path has wrong length: {}",
+                                path.len()
+                            )),
                         },
                         b: match path.get(1) {
                             Some(some) => (*some).to_string(),
-                            None => bug!(format!("cycle path has wrong length: {}", path.len())),
+                            None => bug!(format!(
+                                "cycle path has wrong length: {}",
+                                path.len()
+                            )),
                         }
                     })
                 } else {
@@ -208,7 +220,7 @@ impl Driver {
             info!("typechecking `{name}`");
             let module = loaded_modules.get(name).unwrap().clone();
             let mut ctxt = InferCtxt::new(&mut types_ctxt);
-            ctxt.solve(module);
+            ctxt.solve(&module);
         }
 
         println!("✨ Done!");

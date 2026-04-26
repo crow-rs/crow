@@ -97,7 +97,11 @@ impl<'s> Parser<'s> {
             let end_span = self.prev().span.clone();
             Expr {
                 span: start_span + end_span,
-                kind: ExprKind::If(Box::new(expr), Box::new(block), Some(Box::new(branch))),
+                kind: ExprKind::If(
+                    Box::new(expr),
+                    Box::new(block),
+                    Some(Box::new(branch)),
+                ),
             }
         } else {
             let end_span = self.prev().span.clone();
@@ -159,7 +163,7 @@ impl<'s> Parser<'s> {
         // Bumping `match`
         let start_span = self.peek().span.clone();
         self.bump();
-        let value = self.expr();
+        let values = self.sep_by_2(TokenKind::Comma, |p| p.expr());
 
         // Parsing cases
         let cases = self.sep_by(
@@ -172,7 +176,7 @@ impl<'s> Parser<'s> {
 
         Expr {
             span: start_span + end_span,
-            kind: ExprKind::Match(Box::new(value), cases),
+            kind: ExprKind::Match(values, cases),
         }
     }
 
@@ -268,7 +272,7 @@ impl<'s> Parser<'s> {
             // Todo and panic parsing
             TokenKind::Todo => self.todo_expr(),
             TokenKind::Panic => self.panic_expr(),
-            // Otherwise, raising error
+            // Otherwise, bailing error
             _ => bail!(ParseError::UnexpectedExprToken {
                 got: tk.kind,
                 src: self.source.clone(),
@@ -387,7 +391,9 @@ impl<'s> Parser<'s> {
         let start_span = self.peek().span.clone();
         let mut left = self.compare_expr();
 
-        while self.check(TokenKind::DoubleEq) || self.check(TokenKind::BangEq) {
+        while self.check(TokenKind::DoubleEq)
+            || self.check(TokenKind::BangEq)
+        {
             let op = match self.bump().kind {
                 TokenKind::DoubleEq => BinOp::Eq,
                 TokenKind::BangEq => BinOp::Ne,
@@ -419,7 +425,11 @@ impl<'s> Parser<'s> {
 
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Bin(Box::new(left), Box::new(right), BinOp::BitAnd),
+                kind: ExprKind::Bin(
+                    Box::new(left),
+                    Box::new(right),
+                    BinOp::BitAnd,
+                ),
             };
         }
 
@@ -439,7 +449,11 @@ impl<'s> Parser<'s> {
 
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Bin(Box::new(left), Box::new(right), BinOp::Xor),
+                kind: ExprKind::Bin(
+                    Box::new(left),
+                    Box::new(right),
+                    BinOp::Xor,
+                ),
             };
         }
 
@@ -459,7 +473,11 @@ impl<'s> Parser<'s> {
 
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Bin(Box::new(left), Box::new(right), BinOp::BitOr),
+                kind: ExprKind::Bin(
+                    Box::new(left),
+                    Box::new(right),
+                    BinOp::BitOr,
+                ),
             };
         }
 
@@ -479,7 +497,11 @@ impl<'s> Parser<'s> {
 
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Bin(Box::new(left), Box::new(right), BinOp::And),
+                kind: ExprKind::Bin(
+                    Box::new(left),
+                    Box::new(right),
+                    BinOp::And,
+                ),
             };
         }
 
@@ -499,7 +521,11 @@ impl<'s> Parser<'s> {
 
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Bin(Box::new(left), Box::new(right), BinOp::Or),
+                kind: ExprKind::Bin(
+                    Box::new(left),
+                    Box::new(right),
+                    BinOp::Or,
+                ),
             };
         }
 
