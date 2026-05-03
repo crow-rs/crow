@@ -21,6 +21,12 @@ pub struct TypesCtxt {
 }
 
 /// Implementation
+impl Default for TypesCtxt {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TypesCtxt {
     pub fn new() -> Self {
         Self {

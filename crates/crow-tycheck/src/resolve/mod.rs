@@ -56,27 +56,18 @@ impl Resolver {
     pub fn resolve_mod_def(&mut self, name: &str) -> Option<Def> {
         match self.defs.get(name) {
             Some(def) => Some(def.1.clone()),
-            None => match self.imported_defs.get(name) {
-                Some(def) => Some(def.clone()),
-                None => None,
-            },
+            None => self.imported_defs.get(name).map(|def| def.clone()),
         }
     }
 
     /// Resolves local-level def
     pub fn resolve_local_def(&mut self, name: &str) -> Option<Typ> {
-        match self.ribs.lookup(name) {
-            Some(t) => Some(t),
-            None => None,
-        }
+        self.ribs.lookup(name).map(|t| t)
     }
 
     /// Resolves generic
     pub fn resolve_generic(&mut self, name: &str) -> Option<usize> {
-        match self.generics.lookup(name) {
-            Some(t) => Some(t),
-            None => None,
-        }
+        self.generics.lookup(name).map(|t| t)
     }
 
     /// Resolves imported module

@@ -69,7 +69,7 @@ pub fn module_name(root: &Utf8PathBuf, path: &Utf8PathBuf) -> String {
 
 /// Reads file to string
 pub fn read(path: &Utf8PathBuf) -> String {
-    match fs::read_to_string(&path) {
+    match fs::read_to_string(path) {
         Ok(text) => text,
         Err(_) => bail!(IoError::FailedToRead { path: path.clone() }),
     }

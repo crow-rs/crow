@@ -168,7 +168,7 @@ impl<'s> Parser<'s> {
                     self.bump()
                 } else {
                     bail!(ParseError::UnexpectedToken {
-                        got: it.kind.clone(),
+                        got: it.kind,
                         expected: tk,
                         src: self.source.clone(),
                         span: it.span.1.clone().into(),

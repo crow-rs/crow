@@ -72,7 +72,7 @@ impl<'s> Parser<'s> {
             TypeHint::Mod {
                 span: start_span + end_span,
                 module: id,
-                name: name,
+                name,
                 args,
             }
         }

@@ -157,10 +157,10 @@ impl<'tx> InferCtxt<'tx> {
     /// Infers variable expression
     fn infer_var(&mut self, span: Span, name: &str) -> Typ {
         // Local variable
-        match self.resolver.resolve_local_def(&name) {
+        match self.resolver.resolve_local_def(name) {
             Some(typ) => typ,
             // Module definition
-            None => match self.resolver.resolve_mod_def(&name) {
+            None => match self.resolver.resolve_mod_def(name) {
                 Some(Def::Const(t)) => t,
                 Some(Def::Enum(e)) => Typ::Meta(Meta::Enum(e)),
                 Some(Def::Struct(s)) => Typ::Meta(Meta::Struct(s)),
@@ -184,7 +184,7 @@ impl<'tx> InferCtxt<'tx> {
                     }
                 }
                 // Module definition
-                None => match self.resolver.resolve_mod(&name) {
+                None => match self.resolver.resolve_mod(name) {
                     Some(m) => Typ::Meta(Meta::Module(m)),
                     None => {
                         emit!(
@@ -216,7 +216,6 @@ impl<'tx> InferCtxt<'tx> {
             .fields
             .iter()
             .find(|f| f.name == name)
-            .clone()
         {
             Some(field) => self.subst(field.typ.clone(), &args),
             None => {
@@ -529,7 +528,7 @@ impl<'tx> InferCtxt<'tx> {
         // Inferring callee and args
         let callee = self.infer_expr(callee);
         let args = args
-            .into_iter()
+            .iter()
             .map(|a| self.infer_expr(a))
             .collect::<Vec<Typ>>();
 
@@ -676,7 +675,7 @@ impl<'tx> InferCtxt<'tx> {
                         for (typ, pat) in
                             variant.clone().fields.into_iter().zip(params)
                         {
-                            self.check_pat(self.subst(typ, &args), pat);
+                            self.check_pat(self.subst(typ, args), pat);
                         }
                     } else {
                         emit!(
@@ -725,16 +724,16 @@ impl<'tx> InferCtxt<'tx> {
             | (Typ::Str, PatKind::Lit(Lit::String(_))) => {}
             // Enum patterns
             (Typ::Enum(id, _), PatKind::Variant(variant)) => {
-                self.check_variant_pat(&pat.span, id, &variant)
+                self.check_variant_pat(&pat.span, id, variant)
             }
             (Typ::Enum(id, args), PatKind::Unpack(variant, params)) => {
                 self.check_unpak_pat(
-                    &pat.span, id, &args, &variant, &params,
+                    &pat.span, id, &args, variant, params,
                 );
             }
             // Binding pattern
             (typ, PatKind::BindTo(var)) => {
-                self.resolver.declare_local_def(&var, typ);
+                self.resolver.declare_local_def(var, typ);
             }
             // Or pattern
             (typ, PatKind::Or(vec)) => {

@@ -241,7 +241,7 @@ impl<'tx> InferCtxt<'tx> {
             | Typ::Fun(_, args) => args.iter().any(|a| self.occurs(id, a)),
             Typ::FunRef(ret, params) => {
                 params.iter().any(|a| self.occurs(id, a))
-                    || self.occurs(id, &ret)
+                    || self.occurs(id, ret)
             }
             _ => false,
         }
@@ -300,7 +300,7 @@ impl<'tx> InferCtxt<'tx> {
                     .map(|p| self.pretty(p))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let ret = self.pretty(&ret);
+                let ret = self.pretty(ret);
                 format!("fun({params}) -> {ret}")
             }
             Typ::Meta(meta) => match meta {

@@ -60,7 +60,7 @@ impl<'tx> InferCtxt<'tx> {
                         fields: v
                             .fields
                             .iter()
-                            .map(|hint| self.infer_type_hint(&hint))
+                            .map(|hint| self.infer_type_hint(hint))
                             .collect(),
                     })
                     .collect();

@@ -56,7 +56,7 @@ impl<'tx> InferCtxt<'tx> {
 
         // Making fresh args
         let substs = args
-            .into_iter()
+            .iter()
             .map(|a| self.infer_type_hint(a))
             .collect::<Vec<Typ>>();
 
@@ -77,7 +77,7 @@ impl<'tx> InferCtxt<'tx> {
 
         // Making fresh args
         let substs = args
-            .into_iter()
+            .iter()
             .map(|a| self.infer_type_hint(a))
             .collect::<Vec<Typ>>();
 
@@ -95,29 +95,29 @@ impl<'tx> InferCtxt<'tx> {
         match name {
             // Primitive types
             "int" => {
-                self.ensure_no_generics(&span, args.len(), || Typ::Int)
+                self.ensure_no_generics(span, args.len(), || Typ::Int)
             }
             "float" => {
-                self.ensure_no_generics(&span, args.len(), || Typ::Float)
+                self.ensure_no_generics(span, args.len(), || Typ::Float)
             }
             "bool" => {
-                self.ensure_no_generics(&span, args.len(), || Typ::Bool)
+                self.ensure_no_generics(span, args.len(), || Typ::Bool)
             }
             "str" => {
-                self.ensure_no_generics(&span, args.len(), || Typ::Str)
+                self.ensure_no_generics(span, args.len(), || Typ::Str)
             }
 
             // User-defined types
             _ => {
                 // Trying to resolve generic
-                match self.resolver.resolve_generic(&name) {
+                match self.resolver.resolve_generic(name) {
                     Some(idx) => {
-                        self.ensure_no_generics(&span, args.len(), || {
+                        self.ensure_no_generics(span, args.len(), || {
                             Typ::Generic(name.to_owned(), idx)
                         })
                     }
                     // If no generic found, trying to resolve module definition
-                    None => match self.resolver.resolve_mod_def(&name) {
+                    None => match self.resolver.resolve_mod_def(name) {
                         Some(Def::Enum(e)) => {
                             self.make_enum(span, e, args)
                         }
@@ -186,7 +186,7 @@ impl<'tx> InferCtxt<'tx> {
         ret: &TypeHint,
     ) -> Typ {
         let params = params
-            .into_iter()
+            .iter()
             .map(|p| self.infer_type_hint(p))
             .collect();
         let ret = self.infer_type_hint(ret);
