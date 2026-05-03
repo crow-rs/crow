@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 /// Implementation
 use crate::{
     ctxt::check::InferCtxt,
@@ -17,7 +15,12 @@ use crow_macros::bail;
 impl<'tx> InferCtxt<'tx> {
     /// Performs early analysis of struct
     /// - Defines struct with name and generics, ignoring fields
-    pub fn early_analyze_struct(&mut self, span: &Span, p: Publicity, s: &Struct) {
+    pub fn early_analyze_struct(
+        &mut self,
+        span: &Span,
+        p: Publicity,
+        s: &Struct,
+    ) {
         let def = (
             p,
             Def::Struct(self.tx.insert_struct(def::Struct {
@@ -37,7 +40,12 @@ impl<'tx> InferCtxt<'tx> {
 
     /// Performs early analysis of enum
     /// - Defines enum with name and generics, ignoring variants
-    pub fn early_analyze_enum(&mut self, span: &Span, p: Publicity, e: &Enum) {
+    pub fn early_analyze_enum(
+        &mut self,
+        span: &Span,
+        p: Publicity,
+        e: &Enum,
+    ) {
         let def = (
             p,
             Def::Enum(self.tx.insert_enum(def::Enum {
@@ -62,10 +70,18 @@ impl<'tx> InferCtxt<'tx> {
             // Matching item kind
             match &item.kind {
                 // Processing struct and enum
-                ItemKind::Struct(s) => self.early_analyze_struct(&item.span, item.publicity, s),
-                ItemKind::Enum(e) => self.early_analyze_enum(&item.span, item.publicity, e),
+                ItemKind::Struct(s) => self.early_analyze_struct(
+                    &item.span,
+                    item.publicity,
+                    s,
+                ),
+                ItemKind::Enum(e) => {
+                    self.early_analyze_enum(&item.span, item.publicity, e)
+                }
                 // Skipping functions, natives and consts for early phase
-                ItemKind::Fun(_) | ItemKind::Native(_) | ItemKind::Const(_) => {}
+                ItemKind::Fun(_)
+                | ItemKind::Native(_)
+                | ItemKind::Const(_) => {}
             }
         }
     }

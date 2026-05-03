@@ -1,6 +1,9 @@
 /// Imports
 use crate::{ctxt::check::InferCtxt, def::Def};
-use crow_ast::item::{Const, Fun, ItemKind, Module};
+use crow_ast::{
+    atom::Publicity,
+    item::{Const, Fun, ItemKind, Module},
+};
 
 /// Implementation of middle check phase
 impl<'tx> InferCtxt<'tx> {
@@ -45,8 +48,13 @@ impl<'tx> InferCtxt<'tx> {
 
     /// Performs mid analysis of constant:
     /// - infers expression of the constant body
-    pub fn late_analyze_const(&mut self, c: &Const) {
-        todo!()
+    pub fn late_analyze_const(&mut self, p: Publicity, c: &Const) {
+        // Inferring constant value
+        let value = self.infer_expr(&c.value);
+
+        // Declaring constant
+        self.resolver
+            .declare_mod_def(&c.name, (p, Def::Const(value)));
     }
 
     /// Performs late analysis of module
@@ -57,7 +65,9 @@ impl<'tx> InferCtxt<'tx> {
             match &item.kind {
                 // Processing functions and constants
                 ItemKind::Fun(f) => self.late_analyze_fun(f),
-                ItemKind::Const(c) => self.late_analyze_const(c),
+                ItemKind::Const(c) => {
+                    self.late_analyze_const(item.publicity, c)
+                }
                 // Skipping structs, enums and natives, because
                 // we finished all the analysis of them in `mid` phase
                 ItemKind::Struct(_)
