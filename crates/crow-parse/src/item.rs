@@ -1,8 +1,11 @@
 /// Imports
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
-    atom::{Publicity, Purity, TypeHint},
-    item::{Enum, Field, Fun, Item, ItemKind, Struct, Use, UseKind, UsePath, Variant},
+    atom::{Publicity, TypeHint},
+    item::{
+        Enum, Field, Fun, Item, ItemKind, Struct, Use,
+        UseKind, UsePath, Variant,
+    },
 };
 use crow_lex::token::TokenKind;
 use crow_macros::bail;
@@ -31,7 +34,6 @@ impl<'s> Parser<'s> {
 
         // Parsing signature
         let name = self.expect(TokenKind::Id).lexeme;
-        let generics = self.generic_params();
 
         // Parsing fields
         let fields = self.sep_by(
@@ -41,11 +43,7 @@ impl<'s> Parser<'s> {
             |p| p.struct_field(),
         );
 
-        ItemKind::Struct(Struct {
-            name,
-            generics,
-            fields,
-        })
+        ItemKind::Struct(Struct { name, fields })
     }
 
     // Parses enum variant
@@ -53,22 +51,11 @@ impl<'s> Parser<'s> {
         // Parsing enum variant
         let start_span = self.peek().span.clone();
         let name = self.expect(TokenKind::Id).lexeme;
-        let params = if self.check(TokenKind::Lparen) {
-            self.sep_by(
-                TokenKind::Lparen,
-                TokenKind::Rparen,
-                TokenKind::Comma,
-                |p| p.type_hint(),
-            )
-        } else {
-            Vec::new()
-        };
         let end_span = self.prev().span.clone();
 
         Variant {
             span: start_span + end_span,
             name,
-            fields: params,
         }
     }
 
@@ -79,7 +66,6 @@ impl<'s> Parser<'s> {
 
         // Parsing signature
         let name = self.expect(TokenKind::Id).lexeme;
-        let generics = self.generic_params();
 
         // Parsing variants
         let variants = self.sep_by(
@@ -89,30 +75,17 @@ impl<'s> Parser<'s> {
             |p| p.enum_variant(),
         );
 
-        ItemKind::Enum(Enum {
-            name,
-            generics,
-            variants,
-        })
+        ItemKind::Enum(Enum { name, variants })
     }
 
     // Parses function item kind
     fn fun_item_kind(&mut self) -> ItemKind {
-        // Bumping `pure` if specified
-        let start_span = self.peek().span.clone();
-        let purity = if self.check(TokenKind::Pure) {
-            self.bump();
-            Purity::Pure
-        } else {
-            Purity::Not
-        };
-
         // Bumping `fun`
-        self.expect(TokenKind::Fun);
+        let start_span = self.peek().span.clone();
+        self.bump();
 
         // Parsing signature
         let name = self.expect(TokenKind::Id).lexeme;
-        let generics = self.generic_params();
         let params = self.params();
         let ret = if self.check(TokenKind::Arrow) {
             self.bump();
@@ -127,9 +100,7 @@ impl<'s> Parser<'s> {
 
         ItemKind::Fun(Fun {
             span: start_span + end_span,
-            purity,
             name,
-            generics,
             params,
             ret,
             block,
@@ -141,7 +112,9 @@ impl<'s> Parser<'s> {
         // Module name string
         let start_span = self.peek().span.clone();
         let module = self
-            .sep_by_2(TokenKind::Slash, |p| p.expect(TokenKind::Id).lexeme)
+            .sep_by_2(TokenKind::Slash, |p| {
+                p.expect(TokenKind::Id).lexeme
+            })
             .join("/");
         let end_span = self.prev().span.clone();
 
@@ -168,7 +141,10 @@ impl<'s> Parser<'s> {
             UseKind::As(name)
         } else if self.check(TokenKind::For) {
             self.bump();
-            let names = self.sep_by_2(TokenKind::Comma, |p| p.expect(TokenKind::Id).lexeme);
+            let names = self
+                .sep_by_2(TokenKind::Comma, |p| {
+                    p.expect(TokenKind::Id).lexeme
+                });
 
             UseKind::For(names)
         } else {
@@ -184,14 +160,17 @@ impl<'s> Parser<'s> {
     }
 
     // Parses top-level item
-    pub(crate) fn item(&mut self, publicity: Publicity) -> Item {
+    pub(crate) fn item(
+        &mut self,
+        publicity: Publicity,
+    ) -> Item {
         // Parsing item kind
         let tk = self.peek().clone();
         let start_span = self.peek().span.clone();
         let kind = match &tk.kind {
             TokenKind::Struct => self.struct_item_kind(),
             TokenKind::Enum => self.enum_item_kind(),
-            TokenKind::Fun | TokenKind::Pure => self.fun_item_kind(),
+            TokenKind::Fun => self.fun_item_kind(),
             _ => bail!(ParseError::UnexpectedItemToken {
                 got: tk.kind,
                 src: self.source.clone(),

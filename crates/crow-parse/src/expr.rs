@@ -2,7 +2,7 @@
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
     atom::{BinOp, Lit, UnOp},
-    expr::{Case, Expr, ExprKind},
+    expr::{Case, Expr, ExprKind, Pat},
 };
 use crow_lex::token::TokenKind;
 use crow_macros::bail;
@@ -11,16 +11,11 @@ use crow_macros::bail;
 impl<'s> Parser<'s> {
     /// Group `( expr )` expression parsing
     fn group(&mut self) -> Expr {
-        let start_span = self.peek().span.clone();
         self.expect(TokenKind::Lparen);
         let expr = self.expr();
         self.expect(TokenKind::Rparen);
-        let end_span = self.prev().span.clone();
 
-        Expr {
-            span: start_span + end_span,
-            kind: ExprKind::Paren(Box::new(expr)),
-        }
+        expr
     }
 
     /// Variable parsing
@@ -46,7 +41,10 @@ impl<'s> Parser<'s> {
 
                 result = Expr {
                     span: start_span.clone() + end_span,
-                    kind: ExprKind::Field(Box::new(result), id),
+                    kind: ExprKind::Field(
+                        Box::new(result),
+                        id,
+                    ),
                 };
                 continue;
             }
@@ -63,7 +61,10 @@ impl<'s> Parser<'s> {
 
                 result = Expr {
                     span: start_span.clone() + end_span,
-                    kind: ExprKind::Call(Box::new(result), args),
+                    kind: ExprKind::Call(
+                        Box::new(result),
+                        args,
+                    ),
                 };
                 continue;
             }
@@ -107,7 +108,11 @@ impl<'s> Parser<'s> {
             let end_span = self.prev().span.clone();
             Expr {
                 span: start_span + end_span,
-                kind: ExprKind::If(Box::new(expr), Box::new(block), None),
+                kind: ExprKind::If(
+                    Box::new(expr),
+                    Box::new(block),
+                    None,
+                ),
             }
         }
     }
@@ -132,7 +137,36 @@ impl<'s> Parser<'s> {
 
         Expr {
             span: start_span + end_span,
-            kind: ExprKind::Function(params, Box::new(body)),
+            kind: ExprKind::Function(
+                params,
+                Box::new(body),
+            ),
+        }
+    }
+
+    /// Pattern parsing
+    pub(crate) fn pat(&mut self) -> Pat {
+        // Parsing hint
+        let start_span = self.peek().span.clone();
+        let hint = self.type_hint();
+
+        // Parsing `as` clause
+        if self.check(TokenKind::As) {
+            self.bump();
+            let bind = self.expect(TokenKind::Id).lexeme;
+            let end_span = self.prev().span.clone();
+            Pat {
+                span: start_span + end_span,
+                hint,
+                bind: Some(bind),
+            }
+        } else {
+            let end_span = self.prev().span.clone();
+            Pat {
+                span: start_span + end_span,
+                hint,
+                bind: None,
+            }
         }
     }
 
@@ -140,7 +174,8 @@ impl<'s> Parser<'s> {
     fn case(&mut self) -> Case {
         // Patterns of the case
         let start_span = self.peek().span.clone();
-        let pats = self.sep_by_2(TokenKind::Comma, |p| p.pat());
+        let pats =
+            self.sep_by_2(TokenKind::Comma, |p| p.pat());
 
         // -> { body, ... }
         self.expect(TokenKind::Arrow);
@@ -163,7 +198,8 @@ impl<'s> Parser<'s> {
         // Bumping `match`
         let start_span = self.peek().span.clone();
         self.bump();
-        let values = self.sep_by_2(TokenKind::Comma, |p| p.expr());
+        let values =
+            self.sep_by_2(TokenKind::Comma, |p| p.expr());
 
         // Parsing cases
         let cases = self.sep_by(
@@ -177,6 +213,20 @@ impl<'s> Parser<'s> {
         Expr {
             span: start_span + end_span,
             kind: ExprKind::Match(values, cases),
+        }
+    }
+
+    /// Alloc expression parsing
+    fn alloc_expr(&mut self) -> Expr {
+        // Bumping `alloc`
+        let start_span = self.peek().span.clone();
+        self.bump();
+        let expr = self.expr();
+        let end_span = self.prev().span.clone();
+
+        Expr {
+            span: start_span + end_span,
+            kind: ExprKind::Alloc(Box::new(expr)),
         }
     }
 
@@ -224,6 +274,23 @@ impl<'s> Parser<'s> {
         }
     }
 
+    /// Array expression parsing
+    fn array_expr(&mut self) -> Expr {
+        let start_span = self.peek().span.clone();
+        let vec = self.sep_by(
+            TokenKind::Lbracket,
+            TokenKind::Rbracket,
+            TokenKind::Comma,
+            |p| p.expr(),
+        );
+        let end_span = self.prev().span.clone();
+
+        Expr {
+            span: start_span + end_span,
+            kind: ExprKind::Lit(Lit::Array(vec)),
+        }
+    }
+
     /// Atom expression parsing
     fn atom_expr(&mut self) -> Expr {
         let tk = self.peek().clone();
@@ -245,14 +312,18 @@ impl<'s> Parser<'s> {
                 self.bump();
                 Expr {
                     span: tk.span,
-                    kind: ExprKind::Lit(Lit::String(tk.lexeme)),
+                    kind: ExprKind::Lit(Lit::String(
+                        tk.lexeme,
+                    )),
                 }
             }
             TokenKind::Bool => {
                 self.bump();
                 Expr {
                     span: tk.span,
-                    kind: ExprKind::Lit(Lit::Bool(tk.lexeme)),
+                    kind: ExprKind::Lit(Lit::Bool(
+                        tk.lexeme,
+                    )),
                 }
             }
             TokenKind::None => {
@@ -272,6 +343,10 @@ impl<'s> Parser<'s> {
             // Todo and panic parsing
             TokenKind::Todo => self.todo_expr(),
             TokenKind::Panic => self.panic_expr(),
+            // Alloc expression parsing
+            TokenKind::Alloc => self.alloc_expr(),
+            // Array parsing
+            TokenKind::Lbracket => self.array_expr(),
             // Otherwise, bailing error
             _ => bail!(ParseError::UnexpectedExprToken {
                 got: tk.kind,
@@ -283,7 +358,9 @@ impl<'s> Parser<'s> {
 
     /// Unary expression parsing
     fn unary_expr(&mut self) -> Expr {
-        if self.check(TokenKind::Minus) || self.check(TokenKind::Bang) {
+        if self.check(TokenKind::Minus)
+            || self.check(TokenKind::Bang)
+        {
             let start_span = self.peek().span.clone();
 
             let op = match self.bump().kind {
@@ -325,7 +402,11 @@ impl<'s> Parser<'s> {
 
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Bin(Box::new(left), Box::new(right), op),
+                kind: ExprKind::Bin(
+                    Box::new(left),
+                    Box::new(right),
+                    op,
+                ),
             };
         }
 
@@ -337,7 +418,9 @@ impl<'s> Parser<'s> {
         let start_span = self.peek().span.clone();
         let mut left = self.factor_expr();
 
-        while self.check(TokenKind::Plus) || self.check(TokenKind::Minus) {
+        while self.check(TokenKind::Plus)
+            || self.check(TokenKind::Minus)
+        {
             let op = match self.bump().kind {
                 TokenKind::Plus => BinOp::Add,
                 TokenKind::Minus => BinOp::Sub,
@@ -349,7 +432,11 @@ impl<'s> Parser<'s> {
 
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Bin(Box::new(left), Box::new(right), op),
+                kind: ExprKind::Bin(
+                    Box::new(left),
+                    Box::new(right),
+                    op,
+                ),
             };
         }
 
@@ -379,7 +466,11 @@ impl<'s> Parser<'s> {
 
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Bin(Box::new(left), Box::new(right), op),
+                kind: ExprKind::Bin(
+                    Box::new(left),
+                    Box::new(right),
+                    op,
+                ),
             };
         }
 
@@ -405,7 +496,11 @@ impl<'s> Parser<'s> {
 
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Bin(Box::new(left), Box::new(right), op),
+                kind: ExprKind::Bin(
+                    Box::new(left),
+                    Box::new(right),
+                    op,
+                ),
             };
         }
 
@@ -532,19 +627,45 @@ impl<'s> Parser<'s> {
         left
     }
 
+    /// Index expression parsing
+    fn index_expr(&mut self) -> Expr {
+        let start_span = self.peek().span.clone();
+        let expr = self.logical_or_expr();
+
+        if self.check(TokenKind::Lbracket) {
+            self.bump();
+            let index = self.logical_and_expr();
+            self.expect(TokenKind::Rbracket);
+            let end_span = self.prev().span.clone();
+
+            Expr {
+                span: start_span.clone() + end_span,
+                kind: ExprKind::Index(
+                    Box::new(expr),
+                    Box::new(index),
+                ),
+            }
+        } else {
+            expr
+        }
+    }
+
     /// `Assign` expression parsing
     fn assign_expr(&mut self) -> Expr {
         let start_span = self.peek().span.clone();
-        let mut left = self.logical_or_expr();
+        let mut left = self.index_expr();
 
         while self.check(TokenKind::Eq) {
             self.bump();
 
-            let right = self.logical_or_expr();
+            let right = self.index_expr();
             let end_span = self.prev().span.clone();
             left = Expr {
                 span: start_span.clone() + end_span,
-                kind: ExprKind::Assign(Box::new(left), Box::new(right)),
+                kind: ExprKind::Assign(
+                    Box::new(left),
+                    Box::new(right),
+                ),
             };
         }
 

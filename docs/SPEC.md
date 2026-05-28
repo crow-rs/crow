@@ -1,101 +1,176 @@
-#### 🎺 Examples
+### Idea
+Crow is expression-based, functional, systems programming language
+
+### Top level items
+#### Functions
+Without modifiers:
 ```
-use std/io
-use std/result for Result
-use std/option as o
-use std/list
-
-fun greet(name: str) {
-  io.println("Hello, " + name)
-}
-
-fun main() {
-  let name = io.readln()
-  greet(name)
-}
-
-fun do_nothing() {
-  # none is just a unit value
-  none
-}
-
-pub fun hello(n: int) {
-  if n > 0 {
-    io.println("Hello!")
-    hello(n - 1)
+fun fib(n: i16): i16 {
+  if n <= 1 {
+    n
+  } else {
+    fib(n - 1) + fib(n - 2)
   }
 }
-
-enum Color {
-  Rgb(int, int, int),
-  Hex(str)
-}
-
-pub enum Flower {
-  Dandelion,
-  Rose,
-  Tulip,
-  Lily
-}
-
-pub enum Pot {
-  Empty,
-  Full(Flower)
-}
-
-struct Home {
-  street: str,
-  number: int,
-}
-
-pure fun sum(a: int, b: int) -> int {
+```
+With `pub` modifier:
+```
+pub fun sum(a: i16, b: i16) {
   a + b
 }
+```
+With default `priv` modifier:
+```
+priv fun factorial(n: i64): i64 {
+  let m = 1
 
-fun do_something() {
-  #[
-    function `sum` is not called, 
-    because `sum` is pure and result is ignored (compiler will optimize it)
-  ]#
-  let _ = sum(3, 4) 
-}
-
-enum Dog {
-  Bulldog,
-  Dalmatian,
-  Husky
-}
-
-fun bark(dog: Dog) -> str {
-  match dog {
-    .Bulldog -> "Brr!",
-    .Dalmatian -> "Woof!",
-    .Husky -> "Brr! Woof!"
+  for x in 1..n {
+    m *= x
   }
+
+  m    
 }
-
-fun test() {
-  let a = List()
-  list.push(a, 123)
-  list.push(a, 321)
-  a = list.map(a, fun(a: int) -> a + 1)
+```
+#### Structs
+```
+pub struct Apple {
+  id: i32,
+  kind: [u8; 16],
+  price: i8,
 }
-
-native fun print(text: str) = `
-  console.log(text)
-`
-
-fun test2() {
-  print("Hello, world!")
+```
+#### Enums
+```
+priv enum Pillow {
+  Soft,
+  Raw,
+  Hard
 }
-
-fun unimpl() { 
-  todo as "no implementation yet" 
-} 
-
-fun error() { 
-  panic as "panic occurred" 
+```
+#### Type aliases
+Union types:
+```
+priv type Id = (i16 | i32)
+```
+Type aliases:
+```
+pub type int = i64
+```
+#### Uses / imports
+Import of the module:
+```
+use std/io
+```
+Import specific items from module:
+```
+use std/math for sin, cos
+```
+### Statements
+#### Variable declaration
+Immutable variable declaration:
+```
+let a = 5
+```
+Mutable variable declration:
+```
+let mut a = 5
+```
+#### Pointer drop
+```
+drop ptr
+```
+### Expressions
+#### Unary expressions
+```
+( - | ! | & | * ) value
+```
+#### Binary expressions
+```
+lhs ( + | - | * | / | % | == | != | > | >= | < | <= | & | | | && | || | ^ ) rhs
+```
+#### If/else expressions
+```
+let a = if b > 5 {
+    0
+} else {
+    1
 }
-
-const PI = 3.1415
+```
+```
+if a > 5 {
+    ...
+}
+```
+```
+if a > 0 {
+    ...
+} else if a < 0 {
+    ...
+} else {
+    ...
+}
+```
+#### Match expression
+```
+match int {
+  i64 as a => ...
+  i32 => ...
+  _ => ...
+}
+```
+#### Id expressions
+```
+variable
+```
+#### Field expressions
+```
+a.b.c
+```
+#### Call expressions
+```
+a().b.c().d()
+```
+#### Assign expressions
+```
+a = 5
+b.c.d = 5
+e[1] = 0
+```
+#### Index expressions
+```
+a[0]
+```
+#### Alloc expressions
+```
+alloc 1234
+```
+#### Array expressions
+```
+[1, 2, 3, 4, 5, 6, 7, 8]
+```
+### Semantics
+#### Pointers or references
+Heap allocation:
+```
+fun fresh_id(): &Id {
+    alloc 123
+}
+```
+Drop data behind a pointer:
+```
+fun take(a: &Order) {
+    drop a
+}
+```
+Null pointers:
+```
+fun fresh_ptr(): &dyn {
+    nil
+}
+```
+Dynamic pointer:
+````
+let a = alloc 123
+let b = a as &dyn
+let c = b as &f64
 ```

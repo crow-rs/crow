@@ -12,19 +12,22 @@ pub enum TokenKind {
     Use,         // `use` keyword
     Enum,        // `enum` keyword
     Struct,      // `struct` keywword
+    Type,        // `type` keyeord
     Let,         // `let` keyword
     If,          // `if` keyword
     Else,        // `else` keyword
     Fun,         // `fun` keyword
     Match,       // `match` keyword
     Pub,         // `pub` keyword
+    Priv,        // `priv` keyword
     As,          // `as` keyword
     For,         // `for` keyword
     None,        // `none` keyword
-    Pure,        // `pure` keyword
     Todo,        // `todo` keyword
     Panic,       // `panic` keyword
-    Const,       // `const` keyword
+    Mut,         // `mut` keyword
+    Alloc,       // `alloc` keyword
+    Drop,        // `drop` keyword
     Comma,       // ,
     Dot,         // .
     Lparen,      // (
@@ -86,7 +89,9 @@ impl Add for Span {
     fn add(self, rhs: Self) -> Self::Output {
         // Checking that files are same
         if self.0 != rhs.0 {
-            panic!("attempt to perform `+` operation on two spans from different files.")
+            panic!(
+                "attempt to perform `+` operation on two spans from different files."
+            )
         }
 
         // Calculating new span range

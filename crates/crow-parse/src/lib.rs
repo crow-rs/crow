@@ -3,7 +3,6 @@ mod atom;
 mod errors;
 mod expr;
 mod item;
-mod pat;
 mod stmt;
 
 /// Imports
@@ -41,7 +40,10 @@ pub struct Parser<'s> {
 /// Implementation
 impl<'s> Parser<'s> {
     /// Creates new parser
-    pub fn new(source: Arc<NamedSource<String>>, mut lexer: Lexer<'s>) -> Self {
+    pub fn new(
+        source: Arc<NamedSource<String>>,
+        mut lexer: Lexer<'s>,
+    ) -> Self {
         let current = lexer.next();
         let next = lexer.next();
         Self {
@@ -143,7 +145,13 @@ impl<'s> Parser<'s> {
             // Note: previous token is guaranteed `Some`
             None => bail!(ParseError::UnexpectedEof {
                 src: self.source.clone(),
-                span: self.previous.clone().unwrap().span.1.into(),
+                span: self
+                    .previous
+                    .clone()
+                    .unwrap()
+                    .span
+                    .1
+                    .into(),
             }),
         }
     }
@@ -155,13 +163,22 @@ impl<'s> Parser<'s> {
             // Note: previous token is guaranteed `Some`
             None => bail!(ParseError::UnexpectedEof {
                 src: self.source.clone(),
-                span: self.previous.clone().unwrap().span.1.into(),
+                span: self
+                    .previous
+                    .clone()
+                    .unwrap()
+                    .span
+                    .1
+                    .into(),
             }),
         }
     }
 
     /// Expects token with kind
-    pub(crate) fn expect(&mut self, tk: TokenKind) -> Token {
+    pub(crate) fn expect(
+        &mut self,
+        tk: TokenKind,
+    ) -> Token {
         match &self.current {
             Some(it) => {
                 if it.kind == tk {
@@ -172,14 +189,25 @@ impl<'s> Parser<'s> {
                         expected: tk,
                         src: self.source.clone(),
                         span: it.span.1.clone().into(),
-                        prev: self.prev().span.1.clone().into(),
+                        prev: self
+                            .prev()
+                            .span
+                            .1
+                            .clone()
+                            .into(),
                     })
                 }
             }
             // Note: previous token is guaranteed `Some`
             None => bail!(ParseError::UnexpectedEof {
                 src: self.source.clone(),
-                span: self.previous.clone().unwrap().span.1.into(),
+                span: self
+                    .previous
+                    .clone()
+                    .unwrap()
+                    .span
+                    .1
+                    .into(),
             }),
         }
     }

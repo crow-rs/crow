@@ -1,7 +1,7 @@
 /// Imports
 use crate::Parser;
 use crow_ast::{
-    atom::TypeHint,
+    atom::{Mutability, TypeHint},
     expr::{Expr, ExprKind},
     stmt::{Stmt, StmtKind},
 };
@@ -20,6 +20,13 @@ impl<'s> Parser<'s> {
             self.expect(TokenKind::Id).lexeme
         };
 
+        // Parsing mutability
+        let mutability = if self.check(TokenKind::Mut) {
+            Mutability::Mut
+        } else {
+            Mutability::Not
+        };
+
         // Parsing hint
         let hint = if self.check(TokenKind::Colon) {
             self.type_hint()
@@ -34,7 +41,26 @@ impl<'s> Parser<'s> {
 
         Stmt {
             span: start_span + end_span,
-            kind: StmtKind::Let(name, hint, expr),
+            kind: StmtKind::Let {
+                name,
+                mutability,
+                hint,
+                expr,
+            },
+        }
+    }
+
+    /// Drop statement parsing
+    fn drop_stmt(&mut self) -> Stmt {
+        // Bumping `drop`
+        let start_span = self.peek().span.clone();
+        self.bump();
+        let expr = self.expr();
+        let end_span = self.prev().span.clone();
+
+        Stmt {
+            span: start_span + end_span,
+            kind: StmtKind::Drop(expr),
         }
     }
 
@@ -52,6 +78,7 @@ impl<'s> Parser<'s> {
     fn stmt(&mut self) -> Stmt {
         match self.peek().kind {
             TokenKind::Let => self.let_stmt(),
+            TokenKind::Drop => self.drop_stmt(),
             _ => self.expr_stmt(),
         }
     }

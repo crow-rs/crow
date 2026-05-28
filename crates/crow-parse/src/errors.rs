@@ -8,7 +8,9 @@ use thiserror::Error;
 #[derive(Error, Diagnostic, Debug)]
 pub enum ParseError {
     /// Unexpected token
-    #[error("unexpected token `{got:?}`. expected `{expected:?}`")]
+    #[error(
+        "unexpected token `{got:?}`. expected `{expected:?}`"
+    )]
     #[diagnostic(code(parse::unexpected_tk))]
     UnexpectedToken {
         got: TokenKind,
@@ -24,22 +26,11 @@ pub enum ParseError {
     #[error("unexpected expression token `{got:?}`")]
     #[diagnostic(
         code(parse::unexpected_expr_tk),
-        help("token {got:?} can't be start of the expression")
+        help(
+            "token {got:?} can't be start of the expression"
+        )
     )]
     UnexpectedExprToken {
-        got: TokenKind,
-        #[source_code]
-        src: Arc<NamedSource<String>>,
-        #[label("got unexpected token here...")]
-        span: SourceSpan,
-    },
-    /// Unexpected pat token
-    #[error("unexpected pattern token `{got:?}`")]
-    #[diagnostic(
-        code(parse::unexpected_pat_tk),
-        help("token {got:?} can't be start of the pattern")
-    )]
-    UnexpectedPatToken {
         got: TokenKind,
         #[source_code]
         src: Arc<NamedSource<String>>,
@@ -50,7 +41,9 @@ pub enum ParseError {
     #[error("unexpected item token `{got:?}`")]
     #[diagnostic(
         code(parse::unexpected_item_tk),
-        help("token {got:?} can't be start of the top-level item")
+        help(
+            "token {got:?} can't be start of the top-level item"
+        )
     )]
     UnexpectedItemToken {
         got: TokenKind,

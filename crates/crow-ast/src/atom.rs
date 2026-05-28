@@ -1,6 +1,8 @@
 /// Imports
 use crow_lex::token::Span;
 
+use crate::expr::Expr;
+
 /// Represents item publicity
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Publicity {
@@ -8,10 +10,10 @@ pub enum Publicity {
     Priv,
 }
 
-/// Represents function purity
+/// Represents variable mutability
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Purity {
-    Pure,
+pub enum Mutability {
+    Mut,
     Not,
 }
 
@@ -34,7 +36,6 @@ pub enum BinOp {
     Xor,    // `^`
     BitAnd, // `&`
     BitOr,  // `|`
-    Concat, // `<>`
 }
 
 /// Assignment operation used in assignment expressions
@@ -54,8 +55,10 @@ pub enum AssignOp {
 /// Unary operator
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnOp {
-    Neg,  // -
-    Bang, // !
+    Neg,   // -
+    Bang,  // !
+    Ref,   // &
+    Deref, // *
 }
 
 /// Represents literal
@@ -65,6 +68,7 @@ pub enum Lit {
     Float(String),
     String(String),
     Bool(String),
+    Array(Vec<Expr>),
     None,
 }
 
@@ -74,11 +78,7 @@ pub enum TypeHint {
     /// let a: float = 3.14
     ///        ^^^^^
     ///         this
-    Local {
-        span: Span,
-        name: String,
-        args: Vec<TypeHint>,
-    },
+    Local { span: Span, name: String },
 
     /// let a: a.B = a.B()
     ///        ^^^
@@ -87,7 +87,6 @@ pub enum TypeHint {
         span: Span,
         module: String,
         name: String,
-        args: Vec<TypeHint>,
     },
 
     /// let a: fn(int, int) -> int = ...
@@ -101,6 +100,12 @@ pub enum TypeHint {
 
     /// Unit type `()`
     Unit(Span),
+
+    /// Reference type `&hint`
+    Ref { span: Span, hint: Box<TypeHint> },
+
+    /// Union type
+    Union { span: Span, types: Vec<TypeHint> },
 
     /// Type is not specified
     /// and should be inferred

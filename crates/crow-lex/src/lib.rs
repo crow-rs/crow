@@ -60,7 +60,11 @@ impl<'s> Lexer<'s> {
     }
 
     /// Advances char twice and returns token
-    fn advance_twice_with(&mut self, tk: TokenKind, lexeme: &str) -> Token {
+    fn advance_twice_with(
+        &mut self,
+        tk: TokenKind,
+        lexeme: &str,
+    ) -> Token {
         self.advance();
         self.advance();
         Token::new(
@@ -119,8 +123,9 @@ impl<'s> Lexer<'s> {
         }
         self.advance();
 
-        
-        match char::from_u32(u32::from_str_radix(&buffer, 16).expect("Invalid hex")) {
+        match char::from_u32(
+            u32::from_str_radix(&buffer, 16).expect("Invalid hex"),
+        ) {
             Some(c) => c,
             None => {
                 bail!(LexError::InvalidEscapeSequence {
@@ -178,8 +183,9 @@ impl<'s> Lexer<'s> {
         }
         self.advance();
 
-        
-        match char::from_u32(u32::from_str_radix(&buffer, 16).expect("Invalid hex")) {
+        match char::from_u32(
+            u32::from_str_radix(&buffer, 16).expect("Invalid hex"),
+        ) {
             Some(c) => c,
             None => {
                 bail!(LexError::InvalidEscapeSequence {
@@ -269,7 +275,8 @@ impl<'s> Lexer<'s> {
             // Checking for float dot
             if self.current == Some('.') {
                 // If next is digit
-                if self.next.map(|it| it.is_ascii_digit()).unwrap_or(false) {
+                if self.next.map(|it| it.is_ascii_digit()).unwrap_or(false)
+                {
                     // If already float
                     if is_float {
                         bail!(LexError::InvalidFloat {
@@ -380,14 +387,16 @@ impl<'s> Lexer<'s> {
             "true" => TokenKind::Bool,
             "false" => TokenKind::Bool,
             "pub" => TokenKind::Pub,
+            "priv" => TokenKind::Priv,
             "fun" => TokenKind::Fun,
             "match" => TokenKind::Match,
             "as" => TokenKind::As,
             "for" => TokenKind::For,
-            "pure" => TokenKind::Pure,
             "todo" => TokenKind::Todo,
             "panic" => TokenKind::Panic,
-            "const" => TokenKind::Const,
+            "mut" => TokenKind::Mut,
+            "alloc" => TokenKind::Alloc,
+            "drop" => TokenKind::Drop,
             _ => TokenKind::Id,
         }
     }
@@ -400,7 +409,9 @@ impl<'s> Lexer<'s> {
         // Building id before reaching
         // char that is not letter, not digit,
         // and not underscore.
-        while (self.is_id_letter() || self.is_ascii_digit()) && !self.is_eof() {
+        while (self.is_id_letter() || self.is_ascii_digit())
+            && !self.is_eof()
+        {
             buffer.push(self.current.unwrap());
             self.advance();
         }
@@ -496,43 +507,107 @@ impl<'s> Iterator for Lexer<'s> {
 
         // Matching current and next
         match (self.current, self.next) {
-            (Some('+'), Some('=')) => Some(self.advance_twice_with(TokenKind::PlusEq, "+=")),
-            (Some('-'), Some('=')) => Some(self.advance_twice_with(TokenKind::MinusEq, "-=")),
-            (Some('*'), Some('=')) => Some(self.advance_twice_with(TokenKind::StarEq, "*=")),
-            (Some('/'), Some('=')) => Some(self.advance_twice_with(TokenKind::SlashEq, "/=")),
-            (Some('%'), Some('=')) => Some(self.advance_twice_with(TokenKind::PercentEq, "%=")),
-            (Some('&'), Some('=')) => Some(self.advance_twice_with(TokenKind::AmpersandEq, "&=")),
-            (Some('|'), Some('=')) => Some(self.advance_twice_with(TokenKind::BarEq, "|=")),
-            (Some('^'), Some('=')) => Some(self.advance_twice_with(TokenKind::CaretEq, "^=")),
-            (Some('&'), Some('&')) => Some(self.advance_twice_with(TokenKind::DoubleAmp, "&&")),
-            (Some('|'), Some('|')) => Some(self.advance_twice_with(TokenKind::DoubleBar, "||")),
-            (Some('='), Some('=')) => Some(self.advance_twice_with(TokenKind::DoubleEq, "==")),
-            (Some('!'), Some('=')) => Some(self.advance_twice_with(TokenKind::BangEq, "!=")),
-            (Some('>'), Some('=')) => Some(self.advance_twice_with(TokenKind::Ge, ">=")),
-            (Some('<'), Some('=')) => Some(self.advance_twice_with(TokenKind::Le, "<=")),
-            (Some('-'), Some('>')) => Some(self.advance_twice_with(TokenKind::Arrow, "->")),
-            (Some('_'), _) => Some(self.advance_with(TokenKind::Wildcard, "_")),
-            (Some('&'), _) => Some(self.advance_with(TokenKind::Ampersand, "&")),
+            (Some('+'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::PlusEq, "+="))
+            }
+            (Some('-'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::MinusEq, "-="))
+            }
+            (Some('*'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::StarEq, "*="))
+            }
+            (Some('/'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::SlashEq, "/="))
+            }
+            (Some('%'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::PercentEq, "%="))
+            }
+            (Some('&'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::AmpersandEq, "&="))
+            }
+            (Some('|'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::BarEq, "|="))
+            }
+            (Some('^'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::CaretEq, "^="))
+            }
+            (Some('&'), Some('&')) => {
+                Some(self.advance_twice_with(TokenKind::DoubleAmp, "&&"))
+            }
+            (Some('|'), Some('|')) => {
+                Some(self.advance_twice_with(TokenKind::DoubleBar, "||"))
+            }
+            (Some('='), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::DoubleEq, "=="))
+            }
+            (Some('!'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::BangEq, "!="))
+            }
+            (Some('>'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::Ge, ">="))
+            }
+            (Some('<'), Some('=')) => {
+                Some(self.advance_twice_with(TokenKind::Le, "<="))
+            }
+            (Some('-'), Some('>')) => {
+                Some(self.advance_twice_with(TokenKind::Arrow, "->"))
+            }
+            (Some('_'), _) => {
+                Some(self.advance_with(TokenKind::Wildcard, "_"))
+            }
+            (Some('&'), _) => {
+                Some(self.advance_with(TokenKind::Ampersand, "&"))
+            }
             (Some('|'), _) => Some(self.advance_with(TokenKind::Bar, "|")),
-            (Some('^'), _) => Some(self.advance_with(TokenKind::Caret, "^")),
-            (Some('%'), _) => Some(self.advance_with(TokenKind::Percent, "^")),
-            (Some('+'), _) => Some(self.advance_with(TokenKind::Plus, "+")),
-            (Some('-'), _) => Some(self.advance_with(TokenKind::Minus, "-")),
-            (Some('*'), _) => Some(self.advance_with(TokenKind::Star, "*")),
-            (Some('/'), _) => Some(self.advance_with(TokenKind::Slash, "/")),
-            (Some('!'), _) => Some(self.advance_with(TokenKind::Bang, "!")),
+            (Some('^'), _) => {
+                Some(self.advance_with(TokenKind::Caret, "^"))
+            }
+            (Some('%'), _) => {
+                Some(self.advance_with(TokenKind::Percent, "^"))
+            }
+            (Some('+'), _) => {
+                Some(self.advance_with(TokenKind::Plus, "+"))
+            }
+            (Some('-'), _) => {
+                Some(self.advance_with(TokenKind::Minus, "-"))
+            }
+            (Some('*'), _) => {
+                Some(self.advance_with(TokenKind::Star, "*"))
+            }
+            (Some('/'), _) => {
+                Some(self.advance_with(TokenKind::Slash, "/"))
+            }
+            (Some('!'), _) => {
+                Some(self.advance_with(TokenKind::Bang, "!"))
+            }
             (Some('='), _) => Some(self.advance_with(TokenKind::Eq, "=")),
             (Some('>'), _) => Some(self.advance_with(TokenKind::Gt, ">")),
             (Some('<'), _) => Some(self.advance_with(TokenKind::Lt, "<")),
             (Some('.'), _) => Some(self.advance_with(TokenKind::Dot, ".")),
-            (Some(','), _) => Some(self.advance_with(TokenKind::Comma, ",")),
-            (Some('{'), _) => Some(self.advance_with(TokenKind::Lbrace, "{")),
-            (Some('}'), _) => Some(self.advance_with(TokenKind::Rbrace, "}")),
-            (Some('['), _) => Some(self.advance_with(TokenKind::Lbracket, "[")),
-            (Some(']'), _) => Some(self.advance_with(TokenKind::Rbracket, "]")),
-            (Some('('), _) => Some(self.advance_with(TokenKind::Lparen, "(")),
-            (Some(')'), _) => Some(self.advance_with(TokenKind::Rparen, ")")),
-            (Some(':'), _) => Some(self.advance_with(TokenKind::Colon, ":")),
+            (Some(','), _) => {
+                Some(self.advance_with(TokenKind::Comma, ","))
+            }
+            (Some('{'), _) => {
+                Some(self.advance_with(TokenKind::Lbrace, "{"))
+            }
+            (Some('}'), _) => {
+                Some(self.advance_with(TokenKind::Rbrace, "}"))
+            }
+            (Some('['), _) => {
+                Some(self.advance_with(TokenKind::Lbracket, "["))
+            }
+            (Some(']'), _) => {
+                Some(self.advance_with(TokenKind::Rbracket, "]"))
+            }
+            (Some('('), _) => {
+                Some(self.advance_with(TokenKind::Lparen, "("))
+            }
+            (Some(')'), _) => {
+                Some(self.advance_with(TokenKind::Rparen, ")"))
+            }
+            (Some(':'), _) => {
+                Some(self.advance_with(TokenKind::Colon, ":"))
+            }
             (Some('"'), _) => Some(self.advance_string()),
             (Some(ch), next) => {
                 if self.is_ascii_digit() {

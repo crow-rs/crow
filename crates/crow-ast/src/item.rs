@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    atom::{Param, Publicity, Purity, TypeHint},
+    atom::{Param, Publicity, TypeHint},
     expr::Expr,
 };
 use crow_lex::token::Span;
@@ -45,7 +45,6 @@ pub struct Field {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Struct {
     pub name: String,
-    pub generics: Vec<String>,
     pub fields: Vec<Field>,
 }
 
@@ -54,14 +53,12 @@ pub struct Struct {
 pub struct Variant {
     pub span: Span,
     pub name: String,
-    pub fields: Vec<TypeHint>,
 }
 
 /// Represents enum item
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Enum {
     pub name: String,
-    pub generics: Vec<String>,
     pub variants: Vec<Variant>,
 }
 
@@ -69,31 +66,17 @@ pub struct Enum {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Fun {
     pub span: Span,
-    pub purity: Purity,
     pub name: String,
-    pub generics: Vec<String>,
     pub params: Vec<Param>,
     pub ret: TypeHint,
     pub block: Expr,
 }
 
-/// Native function item
+/// Represents type item
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct NativeFun {
+pub struct Type {
     pub span: Span,
     pub name: String,
-    pub generics: Vec<String>,
-    pub params: Vec<Param>,
-    pub ret: TypeHint,
-    pub body: String,
-}
-
-/// Constant item
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Const {
-    pub span: Span,
-    pub name: String,
-    pub value: Expr,
     pub hint: TypeHint,
 }
 
@@ -103,8 +86,7 @@ pub enum ItemKind {
     Struct(Struct),
     Enum(Enum),
     Fun(Fun),
-    Native(NativeFun),
-    Const(Const),
+    Type(Type),
 }
 
 /// Defines item

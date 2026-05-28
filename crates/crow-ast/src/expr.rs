@@ -1,37 +1,16 @@
 /// Imports
 use crate::{
-    atom::{BinOp, Lit, Param, UnOp},
+    atom::{BinOp, Lit, Param, TypeHint, UnOp},
     stmt::Stmt,
 };
 use crow_lex::token::Span;
-
-/// Defines pattern kind
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum PatKind {
-    /// Represents literal pattern, e.g `123`
-    Lit(Lit),
-
-    /// Represents just enum variant pattern
-    Variant(Expr),
-
-    /// Represents enum fields unpack pattern
-    Unpack(Expr, Vec<Pat>),
-
-    /// Represents bind pattern
-    BindTo(String),
-
-    /// Represents wildcard pattern
-    Wildcard,
-
-    /// Represents or pattern
-    Or(Vec<Pat>),
-}
 
 /// Represents pattern
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Pat {
     pub span: Span,
-    pub kind: PatKind,
+    pub hint: TypeHint,
+    pub bind: Option<String>,
 }
 
 /// Represents case in pattern matching
@@ -66,6 +45,9 @@ pub enum ExprKind {
     /// Represents field access
     Field(Box<Expr>, String),
 
+    /// Index acesss
+    Index(Box<Expr>, Box<Expr>),
+
     /// Represents call expression
     Call(Box<Expr>, Vec<Expr>),
 
@@ -75,9 +57,6 @@ pub enum ExprKind {
     /// Represents match expression
     Match(Vec<Expr>, Vec<Case>),
 
-    /// Represents paren expression
-    Paren(Box<Expr>),
-
     /// Block expression
     Block(Vec<Stmt>),
 
@@ -86,6 +65,9 @@ pub enum ExprKind {
 
     /// Represents panic expression (e.g `panic as "simple panic"`)
     Panic(Option<Box<Expr>>),
+
+    /// Alloc expression
+    Alloc(Box<Expr>),
 }
 
 /// Represents expression
