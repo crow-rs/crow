@@ -1,11 +1,8 @@
 /// Imports
 use crate::{
-    ctxt::check::InferCtxt,
-    def::{Def, Enum, Struct},
-    errors::TypeckError,
-    typ::Typ,
+    ctxt::check::InferCtxt, def::{Def, EffectRow, Enum, Struct}, errors::TypeckError, typ::Typ,
 };
-use crow_ast::atom::{Publicity, TypeHint};
+use crow_ast::{atom::{Publicity, TypeHint}, item::{EffectHint}};
 use crow_lex::token::Span;
 use crow_macros::{bail, emit};
 use id_arena::Id;
@@ -83,6 +80,24 @@ impl<'tx> InferCtxt<'tx> {
 
         // Done
         Typ::Struct(s, substs)
+    }
+
+    pub fn infer_effect_hint(&mut self, 
+        hint: Option<&EffectHint>,
+    ) -> EffectRow {
+         match hint {
+            Some(hint) => {
+                let known = hint.known
+                    .iter()
+                    .map(|name| self.resolver.resolve_effect(name))
+                    .collect();
+                EffectRow { known, tail: None }
+            }
+            None => EffectRow {
+                known: vec![],
+                tail: Some(self.fresh()),
+            },
+        }
     }
 
     /// Infers local type hint
@@ -184,14 +199,15 @@ impl<'tx> InferCtxt<'tx> {
         &mut self,
         params: &[TypeHint],
         ret: &TypeHint,
+        effects: Option<&EffectHint>,
     ) -> Typ {
         let params = params
             .iter()
             .map(|p| self.infer_type_hint(p))
             .collect();
         let ret = self.infer_type_hint(ret);
-
-        Typ::FunRef(Box::new(ret), params)
+        let eff = self.infer_effect_hint(effects);
+        Typ::FunRef(Box::new(ret), params, eff)
     }
 
     /// Infers type hint
@@ -206,8 +222,8 @@ impl<'tx> InferCtxt<'tx> {
                 name,
                 args,
             } => self.infer_mod_type_hint(span, module, name, args),
-            TypeHint::Fun { params, ret, .. } => {
-                self.infer_fun_type_hint(params, ret)
+            TypeHint::Fun { params, ret, effects, .. } => {
+                self.infer_fun_type_hint(params, ret, Some(effects))
             }
             TypeHint::Unit(_) => Typ::Unit,
             TypeHint::Infer => Typ::Var(self.fresh()),

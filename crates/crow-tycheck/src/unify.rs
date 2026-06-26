@@ -1,8 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::check::InferCtxt,
-    errors::TypeckError,
-    typ::{Meta, Typ, Var},
+    ctxt::check::InferCtxt, def::EffectRow, errors::TypeckError, typ::{Effects, Meta, Typ, Var},
 };
 use crow_lex::token::Span;
 use crow_macros::emit;
@@ -48,12 +46,13 @@ impl<'tx> InferCtxt<'tx> {
                     .map(|a| self.subst(a, args))
                     .collect(),
             ),
-            Typ::Fun(id, inner_args) => Typ::Fun(
+            Typ::Fun(id, inner_args, effects) => Typ::Fun(
                 id,
                 inner_args
                     .into_iter()
                     .map(|a| self.subst(a, args))
                     .collect(),
+                effects
             ),
             other => other,
         }
@@ -62,21 +61,51 @@ impl<'tx> InferCtxt<'tx> {
     /// Applies all the substitutions by replacing
     /// type variables with concrete types from `TypCtxt`
     pub fn apply(&mut self, typ: Typ) -> Typ {
-        // Helper function for args mapping
-        let mut map_args = |args: Vec<Typ>| {
-            args.into_iter().map(|a| self.apply(a)).collect()
-        };
-
-        // Matching type for application
         match typ {
-            Typ::Fun(id, args) => Typ::Fun(id, map_args(args)),
-            Typ::Struct(id, args) => Typ::Struct(id, map_args(args)),
-            Typ::Enum(id, args) => Typ::Enum(id, map_args(args)),
+            Typ::Fun(id, args, eff) => {
+                let args = args.into_iter().map(|a| self.apply(a)).collect();
+                let eff = self.apply_effect_row(eff);
+                Typ::Fun(id, args, eff)
+            }
+            Typ::FunRef(ret, params, eff) => {
+                let ret = self.apply(*ret);
+                let params = params.into_iter().map(|a| self.apply(a)).collect();
+                let eff = self.apply_effect_row(eff);
+                Typ::FunRef(Box::new(ret), params, eff)
+            }
+            Typ::Struct(id, args) => {
+                let args = args.into_iter().map(|a| self.apply(a)).collect();
+                Typ::Struct(id, args)
+            }
+            Typ::Enum(id, args) => {
+                let args = args.into_iter().map(|a| self.apply(a)).collect();
+                Typ::Enum(id, args)
+            }
             Typ::Var(id) => match self.tx.get_var(id) {
                 Var::Unbound => Typ::Var(id),
                 Var::Bound(typ) => self.apply(typ.clone()),
             },
             other => other,
+        }
+    }
+
+    fn apply_effect_row(&mut self, row: EffectRow) -> EffectRow {
+        match row.tail {
+            Some(var) => match self.tx.get_effect_row(var) {
+                Some(bound) => {
+                    let bound = bound.clone();
+                    let mut known = row.known;
+                    known.extend(bound.known);
+                    known.sort();
+                    known.dedup();
+                    self.apply_effect_row(EffectRow {
+                        known,
+                        tail: bound.tail,
+                    })
+                }
+                None => row,
+            },
+            None => row,
         }
     }
 
@@ -110,6 +139,86 @@ impl<'tx> InferCtxt<'tx> {
                     }
                 ),
             }
+        }
+    }
+
+    pub fn unify_effects(
+        &mut self,
+        a: EffectRow,
+        b: EffectRow,
+    ) -> Result<(), UnifyError> {
+        let a = self.resolve_effect_row(a);
+        let b = self.resolve_effect_row(b);
+
+        let only_a: Vec<_> = a.known.iter()
+            .filter(|e| !b.known.contains(e))
+            .cloned()
+            .collect();
+        let only_b: Vec<_> = b.known.iter()
+            .filter(|e| !a.known.contains(e))
+            .cloned()
+            .collect();
+
+        match (a.tail, b.tail) {
+            (None, None) => {
+                if only_a.is_empty() && only_b.is_empty() {
+                    Ok(())
+                } else {
+                    Err(UnifyError::Mismatch)
+                }
+            }
+            (Some(var), None) => {
+                if !only_a.is_empty() {
+                    return Err(UnifyError::Mismatch);
+                }
+                self.bind_effect_row(var, EffectRow {
+                    known: only_b,
+                    tail: None,
+                });
+                Ok(())
+            }
+            (None, Some(var)) => {
+                if !only_b.is_empty() {
+                    return Err(UnifyError::Mismatch);
+                }
+                self.bind_effect_row(var, EffectRow {
+                    known: only_a,
+                    tail: None,
+                });
+                Ok(())
+            }
+            (Some(var_a), Some(var_b)) => {
+                let fresh = self.fresh();
+                self.bind_effect_row(var_a, EffectRow {
+                    known: only_b,
+                    tail: Some(fresh),
+                });
+                self.bind_effect_row(var_b, EffectRow {
+                    known: only_a,
+                    tail: Some(fresh),
+                });
+                Ok(())
+            }
+        }
+    }
+
+    fn bind_effect_row(&mut self, id: Id<Var>, row: EffectRow) {
+        self.tx.bind_effect_row(id, row);
+    }
+
+    fn resolve_effect_row(&self, row: EffectRow) -> EffectRow {
+        match row.tail {
+            Some(var) => match self.tx.get_var(var) {
+                Var::Bound(Typ::Var(next)) => {
+                    // chain — follow the variable
+                    self.resolve_effect_row(EffectRow {
+                        known: row.known,
+                        tail: Some(*next),
+                    })
+                }
+                _ => row,
+            },
+            None => row,
         }
     }
 
@@ -155,24 +264,26 @@ impl<'tx> InferCtxt<'tx> {
             }
 
             // Unifying functions
-            (Typ::Fun(id1, args1), Typ::Fun(id2, args2)) if id1 == id2 => {
+            (Typ::Fun(id1, args1, eff1), Typ::Fun(id2, args2, eff2)) if id1 == id2 => {
                 for (a, b) in args1.into_iter().zip(args2) {
                     self.unify(a, b)?;
                 }
+                self.unify_effects(eff1, eff2)?;
                 Ok(())
             }
 
             // Unifying function references
-            (Typ::FunRef(ret1, params1), Typ::FunRef(ret2, params2)) => {
+            (Typ::FunRef(ret1, params1, eff1), Typ::FunRef(ret2, params2, eff2)) => {
                 self.unify(*ret1, *ret2)?;
                 for (a, b) in params1.into_iter().zip(params2) {
                     self.unify(a, b)?;
                 }
+                self.unify_effects(eff1, eff2)?;
                 Ok(())
             }
 
             // Unifying function references
-            (Typ::Fun(id, args), Typ::FunRef(ret1, params1)) => {
+            (Typ::Fun(id, args, eff1), Typ::FunRef(ret1, params1, eff2)) => {
                 let fun = self.tx.get_function(id);
 
                 let (ret1, params1) = (
@@ -189,7 +300,7 @@ impl<'tx> InferCtxt<'tx> {
                 for (a, b) in params1.into_iter().zip(params2) {
                     self.unify(a, b)?;
                 }
-
+                self.unify_effects(eff1, eff2)?;
                 Ok(())
             }
 
@@ -236,14 +347,44 @@ impl<'tx> InferCtxt<'tx> {
                     _ => false,
                 }
             }
-            Typ::Struct(_, args)
-            | Typ::Enum(_, args)
-            | Typ::Fun(_, args) => args.iter().any(|a| self.occurs(id, a)),
-            Typ::FunRef(ret, params) => {
+            Typ::Struct(_, args) | Typ::Enum(_, args) => {
+                args.iter().any(|a| self.occurs(id, a))
+            }
+            Typ::Fun(_, args, eff) => {
+                args.iter().any(|a| self.occurs(id, a))
+                    || eff.tail.map_or(false, |v| v == id)
+            }
+            Typ::FunRef(ret, params, eff) => {
                 params.iter().any(|a| self.occurs(id, a))
                     || self.occurs(id, ret)
+                    || eff.tail.map_or(false, |v| v == id)
             }
             _ => false,
+        }
+    }
+
+    pub fn pretty_effects(&self, eff: &EffectRow) -> String {
+        let mut parts: Vec<String> = eff.known
+            .iter()
+            .map(|e| match e {
+                Effects::Exn => "Exn",
+                Effects::Div => "Div",
+                Effects::Io => "IO",
+                Effects::Console => "Console",
+                Effects::Ndet => "Ndet",
+                Effects::Total => "Total",
+                Effects::UserDefined(_) => "?",
+            }.to_string())
+            .collect();
+
+        if let Some(_) = eff.tail {
+            parts.push("e".to_string());
+        }
+
+        if parts.is_empty() {
+            "Total".to_string()
+        } else {
+            format!("<{}>", parts.join(", "))
         }
     }
 
@@ -283,7 +424,7 @@ impl<'tx> InferCtxt<'tx> {
                     format!("{name}[{args}]")
                 }
             }
-            Typ::Fun(id, args) => {
+            Typ::Fun(id, args, eff) => {
                 let def = self.tx.get_function(*id);
                 let params = def
                     .params
@@ -292,16 +433,18 @@ impl<'tx> InferCtxt<'tx> {
                     .collect::<Vec<_>>()
                     .join(", ");
                 let ret = self.pretty(&def.ret);
-                format!("fun({params}) -> {ret}")
+                let effects = self.pretty_effects(&eff);
+                format!("fun({params}): {effects} -> {ret}")
             }
-            Typ::FunRef(ret, params) => {
+            Typ::FunRef(ret, params, eff) => {
                 let params = params
                     .iter()
                     .map(|p| self.pretty(p))
                     .collect::<Vec<_>>()
                     .join(", ");
                 let ret = self.pretty(ret);
-                format!("fun({params}) -> {ret}")
+                let effects = self.pretty_effects(&eff);
+                format!("fun({params}): {effects} -> {ret}")
             }
             Typ::Meta(meta) => match meta {
                 Meta::Module(_) => "Meta(Module)".to_string(),

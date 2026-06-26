@@ -1,5 +1,5 @@
 /// Imports
-use crate::{ctxt::typ::TypesCtxt, resolve::Resolver};
+use crate::{ctxt::typ::TypesCtxt, def::EffectRow, resolve::Resolver};
 use crow_ast::item::Module;
 
 /// Module checking context used during module typechecking
@@ -8,10 +8,12 @@ pub struct InferCtxt<'tx> {
     pub(crate) tx: &'tx mut TypesCtxt,
 
     /// Definitions env
-    pub(crate) resolver: Resolver,
+    pub resolver: Resolver,
 
     /// Does checker has error?
     pub(crate) has_error: bool,
+
+    pub(crate) current_effects: EffectRow,
 }
 
 /// Implementation
@@ -22,6 +24,10 @@ impl<'tx> InferCtxt<'tx> {
             tx,
             resolver: Resolver::default(),
             has_error: false,
+            current_effects: EffectRow {
+                known: vec![],
+                tail: None, 
+            },
         }
     }
 

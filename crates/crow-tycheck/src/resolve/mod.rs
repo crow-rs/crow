@@ -4,10 +4,9 @@ mod ribs;
 
 /// Imports
 use crate::{
-    def::{Def, ModDef, Module},
-    resolve::{generics::GenericsStack, ribs::RibsStack},
-    typ::Typ,
+    def::{Def, ModDef, Module}, resolve::{generics::GenericsStack, ribs::RibsStack}, typ::{Effects, Typ},
 };
+use crow_macros::bug;
 use id_arena::Id;
 use std::collections::HashMap;
 
@@ -32,6 +31,14 @@ pub struct Resolver {
 
 /// Implementation
 impl Resolver {
+    pub fn export_defs(&self) -> HashMap<String, Def> {
+        self.defs
+            .iter()
+            .map(|(name, (_, def))| (name.clone(), def.clone()))
+            .collect()
+    }
+
+    
     /// Enters generics scope
     pub fn enter_generics(&mut self, g: Vec<String>) {
         self.generics.enter(g);
@@ -93,5 +100,17 @@ impl Resolver {
     /// Declares module
     pub fn declare_mod(&mut self, name: &str, m: Id<Module>) {
         self.imported_mods.insert(name.to_string(), m);
+    }
+
+    pub fn resolve_effect(&mut self, name: &str) -> Effects {
+        match name {
+            "exn" => Effects::Exn,
+            "div" => Effects::Div,
+            "io" => Effects::Io,
+            "console" => Effects::Console,
+            "ndet" => Effects::Ndet,
+            "tot" => Effects::Total,
+            _ => bug!("User defined effects are not supported right now :(")
+        }
     }
 }

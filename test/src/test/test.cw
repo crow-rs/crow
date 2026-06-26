@@ -1,16 +1,17 @@
-enum Option[T] {
-    Some(T),
-    None
-}
 
-fun sum(a: int, b: int) -> int {
+
+fun sum(a: int, b: int): tot -> int {
     a + b
 }
 
-fun main() {
-    let a = Some(Some(3))
-    let b = match a {
-        .Some(.Some("hello")) -> 1,
-        _ -> 2
+fun main(): tot -> int {
+    let a = sum(10, 20)
+
+    let c = match a {
+        10 -> 0,
+        30 -> 67,
+        _ -> 1337
     }
+
+    c
 }

@@ -1,0 +1,9 @@
+[package]
+name = "crow-hir-to-mir"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crow-ir = { path = "../crow-ir" }
+crow-tycheck = { path = "../crow-tycheck" }
+crow-ast = { path = "../crow-ast" }

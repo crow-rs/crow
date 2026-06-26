@@ -6,6 +6,10 @@ mod io;
 use crate::errors::DriverError;
 use camino::Utf8PathBuf;
 use crow_ast::item;
+use crow_ast_to_hir::build_hir;
+use crow_gen::emit;
+use crow_hir_to_mir::lower_to_mir;
+use crow_ir::{MirBasicBlock, MirBody, MirFunction, MirLocal, MirLocalKind, MirModule, MirTerminator, MirType};
 use crow_lex::Lexer;
 use crow_macros::{bail, bug};
 use crow_parse::Parser;
@@ -216,11 +220,16 @@ impl Driver {
         // Performing typecheck
         info!("performing typecheck...");
         let mut types_ctxt = TypesCtxt::new();
+
         for name in sorted {
             info!("typechecking `{name}`");
             let module = loaded_modules.get(name).unwrap().clone();
             let mut ctxt = InferCtxt::new(&mut types_ctxt);
             ctxt.solve(&module);
+            let defs = ctxt.resolver.export_defs();
+            let hir = build_hir(&types_ctxt, defs, &module);
+            let mir = lower_to_mir(&hir);
+            emit(&mir);
         }
 
         println!("✨ Done!");

@@ -1,9 +1,15 @@
 /// Imports
-use crate::typ::Typ;
+use crate::typ::{Effects, Typ, Var};
 use crow_ast::atom::Publicity;
 use crow_lex::token::Span;
 use id_arena::Id;
 use std::collections::HashMap;
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct EffectRow {
+    pub known: Vec<Effects>,
+    pub tail: Option<Id<Var>>
+}
 
 /// Defines a field in the type system
 #[derive(Clone)]
@@ -41,6 +47,7 @@ pub struct Function {
     pub generics: Vec<String>,
     pub params: Vec<Typ>,
     pub ret: Typ,
+    pub effects: EffectRow
 }
 
 /// Represents definition

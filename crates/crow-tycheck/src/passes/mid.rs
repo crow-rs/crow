@@ -1,7 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::check::InferCtxt,
-    def::{Def, Field, Function, Variant},
+    ctxt::check::InferCtxt, def::{Def, EffectRow, Field, Function, Variant},
 };
 use crow_ast::{
     atom::Publicity,
@@ -93,6 +92,7 @@ impl<'tx> InferCtxt<'tx> {
                 .map(|param| self.infer_type_hint(&param.hint))
                 .collect(),
             ret: self.infer_type_hint(&f.ret),
+            effects: self.infer_effect_hint(Some(&f.effects))
         };
         self.resolver.exit_generics();
         // Declaring function
@@ -117,6 +117,10 @@ impl<'tx> InferCtxt<'tx> {
                 .map(|param| self.infer_type_hint(&param.hint))
                 .collect(),
             ret: self.infer_type_hint(&f.ret),
+            effects: EffectRow { // todo - add effects to native function
+                known: Vec::new(),
+                tail: None
+            }
         };
         self.resolver.exit_generics();
         // Declaring function

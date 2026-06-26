@@ -39,8 +39,9 @@ fn main() {
         .init();
 
     let mut driver = Driver::new(DriverConfig::new(
-        Utf8PathBuf::from("C:\\Users\\vyacheslav\\crow\\test\\src"),
-        Utf8PathBuf::from("C:\\Users\\vyacheslav\\crow\\test\\target"),
+        Utf8PathBuf::from("/home/f0rits/Documents/crow/test/src"),
+        Utf8PathBuf::from("/home/f0rits/Documents/crow/test/target"),
     ));
+
     driver.perform_compilation();
 }

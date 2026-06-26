@@ -1,8 +1,10 @@
 pub mod ctxt;
-mod def;
+pub mod def;
 mod errors;
 mod infer;
 mod passes;
-mod resolve;
-mod typ;
+pub mod resolve;
+pub mod typ;
 mod unify;
+
+pub mod hir;

@@ -1,5 +1,5 @@
 /// Imports
-use crate::def::{Enum, Function, Module, Struct};
+use crate::def::{EffectRow, Enum, Function, Module, Struct};
 use id_arena::Id;
 
 /// Defines a type variable
@@ -30,8 +30,8 @@ pub enum Typ {
     Bool,
 
     /// Function types
-    FunRef(Box<Typ>, Vec<Typ>),
-    Fun(Id<Function>, Vec<Typ>),
+    FunRef(Box<Typ>, Vec<Typ>, EffectRow),
+    Fun(Id<Function>, Vec<Typ>, EffectRow),
 
     /// Algebraic data types
     Struct(Id<Struct>, Vec<Typ>),
@@ -47,4 +47,15 @@ pub enum Typ {
 
     /// An guaranteed error type
     Error,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub enum Effects {
+    Total,
+    Exn,
+    Div,
+    Ndet,
+    Console,
+    Io,
+    UserDefined(Id<EffectRow>)
 }

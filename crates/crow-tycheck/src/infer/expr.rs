@@ -1,9 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::check::InferCtxt,
-    def::{Def, Enum, Function, Module, Struct, Variant},
-    errors::TypeckError,
-    typ::{Meta, Typ},
+    ctxt::check::InferCtxt, def::{Def, EffectRow, Enum, Function, Module, Struct, Variant}, errors::TypeckError, typ::{Meta, Typ},
 };
 use crow_ast::{
     atom::{BinOp, Lit, Param, Publicity, UnOp},
@@ -166,9 +163,11 @@ impl<'tx> InferCtxt<'tx> {
                 Some(Def::Struct(s)) => Typ::Meta(Meta::Struct(s)),
                 Some(Def::Function(id)) => {
                     let fun = self.tx.get_function(id);
+                    let effects = fun.effects.clone();
                     Typ::Fun(
                         id,
                         self.fresh_generic_args(fun.generics.len()),
+                        effects
                     )
                 }
                 Some(Def::Variant(id, idx)) => {
@@ -279,9 +278,11 @@ impl<'tx> InferCtxt<'tx> {
                     Def::Enum(id) => Typ::Meta(Meta::Enum(id)),
                     Def::Function(id) => {
                         let fun = self.tx.get_function(id);
+                        let effects = fun.effects.clone();
                         Typ::Fun(
                             id,
                             self.fresh_generic_args(fun.generics.len()),
+                            effects
                         )
                     }
                     Def::Const(typ) => typ.clone(),
@@ -363,10 +364,11 @@ impl<'tx> InferCtxt<'tx> {
         id: Id<Function>,
         generics: Vec<Typ>,
         args: Vec<Typ>,
+        effects: EffectRow
     ) -> Typ {
         // Getting function
         let fun = self.tx.get_function(id);
-
+        let fun_effects = fun.effects.clone();
         // Instantiating return type and param types
         let ret = self.subst(fun.ret.clone(), &generics);
         let params = fun
@@ -386,10 +388,21 @@ impl<'tx> InferCtxt<'tx> {
             emit!(
                 self,
                 TypeckError::ArityMissmatch {
-                    src: span.0,
-                    span: span.1.into(),
+                    src: span.clone().0,
+                    span: span.clone().1.into(),
                     expected: params.len(),
                     got: args.len()
+                }
+            );
+        }
+        if let Err(_) = self.unify_effects(fun_effects.clone(), effects.clone()) {
+            emit!(
+                self,
+                TypeckError::EffectsMismatch {
+                    src: span.0,
+                    span: span.1.into(),
+                    expected: self.pretty_effects(&effects),
+                    got: self.pretty_effects(&fun_effects)
                 }
             );
         }
@@ -397,17 +410,17 @@ impl<'tx> InferCtxt<'tx> {
         ret
     }
 
-    /// Infers function reference call
     fn infer_fun_ref_call(
         &mut self,
         span: Span,
         ret: Typ,
         params: Vec<Typ>,
         args: Vec<Typ>,
+        callee_effects: EffectRow,
+        caller_effects: EffectRow,
     ) -> Typ {
         // Checking arity
         if params.len() == args.len() {
-            // Checking params and args types equality
             params
                 .iter()
                 .zip(args)
@@ -416,13 +429,27 @@ impl<'tx> InferCtxt<'tx> {
             emit!(
                 self,
                 TypeckError::ArityMissmatch {
-                    src: span.0,
-                    span: span.1.into(),
+                    src: span.0.clone(),
+                    span: span.1.clone().into(),
                     expected: params.len(),
                     got: args.len()
                 }
             );
         }
+
+        // callee's effects must fit into caller's
+        if let Err(_) = self.unify_effects(callee_effects.clone(), caller_effects.clone()) {
+            emit!(
+                self,
+                TypeckError::EffectsMismatch {
+                    src: span.0,
+                    span: span.1.into(),
+                    expected: self.pretty_effects(&callee_effects),
+                    got: self.pretty_effects(&caller_effects)
+                }
+            );
+        }
+
         ret
     }
 
@@ -531,16 +558,14 @@ impl<'tx> InferCtxt<'tx> {
             .iter()
             .map(|a| self.infer_expr(a))
             .collect::<Vec<Typ>>();
-
         // Matching callee
         match callee {
             // Function call
-            Typ::Fun(id, generics) => {
-                self.infer_fun_call(span, id, generics, args)
+            Typ::Fun(id, generics, _effects) => {
+                self.infer_fun_call(span, id, generics, args, self.current_effects.clone())
             }
-            // Function reference call
-            Typ::FunRef(ret, params) => {
-                self.infer_fun_ref_call(span, *ret, params, args)
+            Typ::FunRef(ret, params, fn_effects) => {
+                self.infer_fun_ref_call(span, *ret, params, args, fn_effects, self.current_effects.clone())
             }
             // Struct call
             Typ::Meta(Meta::Struct(id)) => {
@@ -588,7 +613,11 @@ impl<'tx> InferCtxt<'tx> {
         self.resolver.exit_scope();
 
         // Done!
-        Typ::FunRef(Box::new(ret), param_types)
+        // question - can closure have effects?
+        Typ::FunRef(Box::new(ret), param_types, EffectRow{
+            known: Vec::new(),
+            tail: None
+        })
     }
 
     /// Infers todo or panic expression

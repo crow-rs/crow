@@ -151,6 +151,27 @@ pub(crate) enum TypeckError {
         span: SourceSpan,
         en: String,
     },
+
+    #[error("undefined effect")]
+    #[diagnostic(code(typeck::undefined_effect))]
+    UndefinedEffect {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("access here...")]
+        span: SourceSpan,
+        name: String,
+    },
+
+    #[error("Effect missmatch. expected: {expected} but got: {got}")]
+    #[diagnostic(code(typeck::effect_missmatch))]
+    EffectsMismatch {
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("access here...")]
+        span: SourceSpan,
+        expected: String,
+        got: String
+    },
 }
 
 /// Exhaustiveness error

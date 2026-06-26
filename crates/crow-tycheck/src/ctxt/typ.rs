@@ -1,7 +1,8 @@
+use std::collections::HashMap;
+
 /// Imports
 use crate::{
-    def::{Enum, Function, Module, Struct},
-    typ::Var,
+    def::{EffectRow, Enum, Function, Module, Struct}, typ::Var,
 };
 use crow_macros::bug;
 use id_arena::{Arena, Id};
@@ -18,6 +19,8 @@ pub struct TypesCtxt {
 
     /// Type variables arena
     pub vars: Arena<Var>,
+
+    effect_rows: HashMap<Id<Var>, EffectRow>,
 }
 
 /// Implementation
@@ -35,6 +38,7 @@ impl TypesCtxt {
             functions: Arena::new(),
             vars: Arena::new(),
             mods: Arena::new(),
+            effect_rows: HashMap::new(),
         }
     }
 
@@ -131,5 +135,13 @@ impl TypesCtxt {
         self.mods
             .get_mut(id)
             .unwrap_or_else(|| bug!(format!("module not found: {:?}", id)))
+    }
+
+    pub fn bind_effect_row(&mut self, id: Id<Var>, row: EffectRow) {
+        self.effect_rows.insert(id, row);
+    }
+
+    pub fn get_effect_row(&self, id: Id<Var>) -> Option<&EffectRow> {
+        self.effect_rows.get(&id)
     }
 }

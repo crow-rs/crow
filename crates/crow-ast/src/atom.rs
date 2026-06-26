@@ -1,6 +1,8 @@
 /// Imports
 use crow_lex::token::Span;
 
+use crate::item::EffectHint;
+
 /// Represents item publicity
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Publicity {
@@ -97,6 +99,7 @@ pub enum TypeHint {
         span: Span,
         params: Vec<TypeHint>,
         ret: Box<TypeHint>,
+        effects: EffectHint
     },
 
     /// Unit type `()`

@@ -19,11 +19,16 @@ impl<'tx> InferCtxt<'tx> {
         {
             // Checking function body
             Def::Function(id) => {
-                // Getting function info
-                let (params, ret) = {
+                let (params, ret, effects) = {
                     let f = self.tx.get_function(id);
-                    (f.params.clone(), f.ret.clone())
+                    (f.params.clone(), f.ret.clone(), f.effects.clone())
                 };
+
+                // set curr effects
+                let prev = std::mem::replace(
+                    &mut self.current_effects,
+                    effects,
+                );
 
                 // Entering function scope
                 self.resolver.enter_scope();
@@ -40,6 +45,9 @@ impl<'tx> InferCtxt<'tx> {
 
                 // Exiting function scope
                 self.resolver.exit_scope();
+
+                // relax
+                self.current_effects = prev;
             }
             _ => unreachable!(),
         }

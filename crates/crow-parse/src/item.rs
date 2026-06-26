@@ -1,8 +1,7 @@
 /// Imports
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
-    atom::{Publicity, Purity, TypeHint},
-    item::{Enum, Field, Fun, Item, ItemKind, Struct, Use, UseKind, UsePath, Variant},
+    atom::{Publicity, Purity, TypeHint}, item::{Enum, Field, Fun, Item, ItemKind, Struct, Use, UseKind, UsePath, Variant},
 };
 use crow_lex::token::TokenKind;
 use crow_macros::bail;
@@ -114,6 +113,7 @@ impl<'s> Parser<'s> {
         let name = self.expect(TokenKind::Id).lexeme;
         let generics = self.generic_params();
         let params = self.params();
+        let effects = self.effects();
         let ret = if self.check(TokenKind::Arrow) {
             self.bump();
             self.type_hint()
@@ -133,6 +133,7 @@ impl<'s> Parser<'s> {
             params,
             ret,
             block,
+            effects
         })
     }
 
