@@ -1,6 +1,6 @@
 /// Imports
 use crate::Parser;
-use crow_ast::{atom::{Param, TypeHint}, item::EffectHint};
+use crow_ast::atom::{EffectHint, Effects, Param, TypeHint};
 use crow_lex::token::TokenKind;
 
 /// Atoms parsing implementation
@@ -31,23 +31,6 @@ impl<'s> Parser<'s> {
         } else {
             Vec::new()
         }
-    }
-
-    //todo: supports generic effect
-    pub(crate) fn effects(&mut self) -> EffectHint {
-        let mut empty_effects = EffectHint { known: Vec::new(), tail: None };
-
-        if !self.check(TokenKind::Colon) {
-            return empty_effects
-        }
-
-        self.expect(TokenKind::Colon);
-
-        empty_effects.known = self.sep_by_2( TokenKind::Comma, |p| {
-            p.expect(TokenKind::Id).lexeme
-        });
-
-        empty_effects
     }
 
     /// Parses parameters
@@ -120,6 +103,7 @@ impl<'s> Parser<'s> {
             |p| p.type_hint(),
         );
 
+        // Parsing function effects
         let effects = self.effects();
 
         // Parsing return type
@@ -135,7 +119,7 @@ impl<'s> Parser<'s> {
             span: start_span + end_span,
             params,
             ret,
-            effects
+            effects,
         }
     }
 
@@ -146,5 +130,30 @@ impl<'s> Parser<'s> {
         } else {
             self.id_type_hint()
         }
+    }
+
+    /// Parses effect hint
+    /// todo: supports generic effect
+    pub(crate) fn effect_hint(&mut self) -> EffectHint {
+        let name = self.expect(TokenKind::Id).lexeme;
+        EffectHint { name }
+    }
+
+    /// Parses function effects
+    pub(crate) fn effects(&mut self) -> Effects {
+        // Preparing effects
+        let mut effects = Effects {
+            known: Vec::new(),
+            tail: None,
+        };
+
+        // If effects presented
+        if self.check(TokenKind::Colon) {
+            self.bump();
+            effects.known =
+                self.sep_by_2(TokenKind::Comma, |p| p.effect_hint());
+        }
+
+        effects
     }
 }

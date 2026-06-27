@@ -9,11 +9,14 @@ use crow_ast::item;
 use crow_ast_to_hir::build_hir;
 use crow_gen::emit;
 use crow_hir_to_mir::lower_to_mir;
-use crow_ir::{MirBasicBlock, MirBody, MirFunction, MirLocal, MirLocalKind, MirModule, MirTerminator, MirType};
+use crow_ir::{
+    MirBasicBlock, MirBody, MirFunction, MirLocal, MirLocalKind,
+    MirModule, MirTerminator, MirType,
+};
 use crow_lex::Lexer;
 use crow_macros::{bail, bug};
 use crow_parse::Parser;
-use crow_tycheck::ctxt::{check::InferCtxt, typ::TypesCtxt};
+use crow_tycheck::ctxt::{infer::InferCtxt, typ::TypesCtxt};
 use miette::NamedSource;
 use petgraph::{Direction, prelude::DiGraphMap};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};

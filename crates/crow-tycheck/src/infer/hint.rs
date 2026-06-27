@@ -1,8 +1,11 @@
 /// Imports
 use crate::{
-    ctxt::check::InferCtxt, def::{Def, EffectRow, Enum, Struct}, errors::TypeckError, typ::Typ,
+    ctxt::infer::InferCtxt,
+    def::{DefKind, Enum, Struct},
+    errors::TypeckError,
+    typ::{Effect, EffectRow, Typ},
 };
-use crow_ast::{atom::{Publicity, TypeHint}, item::{EffectHint}};
+use crow_ast::atom::{EffectHint, Effects, Publicity, TypeHint};
 use crow_lex::token::Span;
 use crow_macros::{bail, emit};
 use id_arena::Id;
@@ -82,22 +85,19 @@ impl<'tx> InferCtxt<'tx> {
         Typ::Struct(s, substs)
     }
 
-    pub fn infer_effect_hint(&mut self, 
-        hint: Option<&EffectHint>,
-    ) -> EffectRow {
-         match hint {
-            Some(hint) => {
-                let known = hint.known
-                    .iter()
-                    .map(|name| self.resolver.resolve_effect(name))
-                    .collect();
-                EffectRow { known, tail: None }
-            }
-            None => EffectRow {
-                known: vec![],
-                tail: Some(self.fresh()),
-            },
-        }
+    /// Infers effect hint
+    pub fn infer_effect_hint(&mut self, hint: &EffectHint) -> Effect {
+        self.resolver.resolve_effect(&hint.name)
+    }
+
+    /// Infers effects
+    pub fn infer_effects(&mut self, effects: &Effects) -> EffectRow {
+        let known = effects
+            .known
+            .iter()
+            .map(|hint| self.infer_effect_hint(hint))
+            .collect();
+        EffectRow { known, tail: None }
     }
 
     /// Infers local type hint
@@ -131,14 +131,21 @@ impl<'tx> InferCtxt<'tx> {
                             Typ::Generic(name.to_owned(), idx)
                         })
                     }
-                    // If no generic found, trying to resolve module definition
+                    // If no generic found, trying to resolve module-level definition
                     None => match self.resolver.resolve_mod_def(name) {
-                        Some(Def::Enum(e)) => {
-                            self.make_enum(span, e, args)
-                        }
-                        Some(Def::Struct(s)) => {
-                            self.make_struct(span, s, args)
-                        }
+                        Some(def) => match def.1 {
+                            DefKind::Enum(e) => {
+                                self.make_enum(span, e, args)
+                            }
+                            DefKind::Struct(s) => {
+                                self.make_struct(span, s, args)
+                            }
+                            _ => bail!(TypeckError::UndefinedType {
+                                src: span.0.clone(),
+                                span: span.1.clone().into(),
+                                name: name.to_owned(),
+                            }),
+                        },
                         _ => bail!(TypeckError::UndefinedType {
                             src: span.0.clone(),
                             span: span.1.clone().into(),
@@ -158,7 +165,7 @@ impl<'tx> InferCtxt<'tx> {
         name: &str,
         args: &[TypeHint],
     ) -> Typ {
-        // Getting module
+        // Resolving module
         let module = match self.resolver.resolve_mod(module) {
             Some(m) => m,
             None => bail!(TypeckError::UndefinedMod {
@@ -168,10 +175,13 @@ impl<'tx> InferCtxt<'tx> {
             }),
         };
 
-        // Getting definition
+        // Resolving definition
         match self.tx.get_mod(module).defs.get(name) {
             // If publicity is private
-            Some((Publicity::Priv, Def::Enum(_) | Def::Struct(_))) => {
+            Some((
+                Publicity::Priv,
+                DefKind::Enum(_) | DefKind::Struct(_),
+            )) => {
                 emit!(
                     self,
                     TypeckError::PrivateType {
@@ -183,8 +193,10 @@ impl<'tx> InferCtxt<'tx> {
                 Typ::Error
             }
             // Otherwise
-            Some((_, Def::Enum(e))) => self.make_enum(span, *e, args),
-            Some((_, Def::Struct(s))) => self.make_struct(span, *s, args),
+            Some((_, DefKind::Enum(e))) => self.make_enum(span, *e, args),
+            Some((_, DefKind::Struct(s))) => {
+                self.make_struct(span, *s, args)
+            }
             // If type is undefined
             _ => bail!(TypeckError::UndefinedType {
                 src: span.0.clone(),
@@ -199,14 +211,12 @@ impl<'tx> InferCtxt<'tx> {
         &mut self,
         params: &[TypeHint],
         ret: &TypeHint,
-        effects: Option<&EffectHint>,
+        effects: &Effects,
     ) -> Typ {
-        let params = params
-            .iter()
-            .map(|p| self.infer_type_hint(p))
-            .collect();
+        let params =
+            params.iter().map(|p| self.infer_type_hint(p)).collect();
         let ret = self.infer_type_hint(ret);
-        let eff = self.infer_effect_hint(effects);
+        let eff = self.infer_effects(effects);
         Typ::FunRef(Box::new(ret), params, eff)
     }
 
@@ -222,9 +232,12 @@ impl<'tx> InferCtxt<'tx> {
                 name,
                 args,
             } => self.infer_mod_type_hint(span, module, name, args),
-            TypeHint::Fun { params, ret, effects, .. } => {
-                self.infer_fun_type_hint(params, ret, Some(effects))
-            }
+            TypeHint::Fun {
+                params,
+                ret,
+                effects,
+                ..
+            } => self.infer_fun_type_hint(params, ret, effects),
             TypeHint::Unit(_) => Typ::Unit,
             TypeHint::Infer => Typ::Var(self.fresh()),
         }

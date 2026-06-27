@@ -1,5 +1,5 @@
 /// Imports
-use crate::{ctxt::check::InferCtxt, typ::Typ};
+use crate::{ctxt::infer::InferCtxt, typ::Typ};
 use crow_ast::{
     atom::TypeHint,
     expr::Expr,

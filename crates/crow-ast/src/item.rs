@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    atom::{Param, Publicity, Purity, TypeHint},
+    atom::{Effects, Param, Publicity, Purity, TypeHint},
     expr::Expr,
 };
 use crow_lex::token::Span;
@@ -65,13 +65,6 @@ pub struct Enum {
     pub variants: Vec<Variant>,
 }
 
-/// Represents effects of function
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct EffectHint {
-    pub known: Vec<String>,
-    pub tail: Option<char>
-}
-
 /// Represents function item
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Fun {
@@ -80,9 +73,9 @@ pub struct Fun {
     pub name: String,
     pub generics: Vec<String>,
     pub params: Vec<Param>,
+    pub effects: Effects,
     pub ret: TypeHint,
     pub block: Expr,
-    pub effects: EffectHint
 }
 
 /// Native function item

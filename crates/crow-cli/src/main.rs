@@ -38,6 +38,13 @@ fn main() {
         .with(fmt_layer)
         .init();
 
+    /*
+    let mut driver = Driver::new(DriverConfig::new(
+        Utf8PathBuf::from("/home/vyacheslav/crow/test/src"),
+        Utf8PathBuf::from("/home/vyacheslav/crow/test/target"),
+    ));
+    */
+
     let mut driver = Driver::new(DriverConfig::new(
         Utf8PathBuf::from("/home/f0rits/Documents/crow/test/src"),
         Utf8PathBuf::from("/home/f0rits/Documents/crow/test/target"),

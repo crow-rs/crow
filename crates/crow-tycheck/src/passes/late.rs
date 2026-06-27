@@ -1,5 +1,5 @@
 /// Imports
-use crate::{ctxt::check::InferCtxt, def::Def};
+use crate::{ctxt::infer::InferCtxt, def::DefKind};
 use crow_ast::{
     atom::Publicity,
     item::{Const, Fun, ItemKind, Module},
@@ -16,19 +16,18 @@ impl<'tx> InferCtxt<'tx> {
             .resolver
             .resolve_mod_def(&f.name)
             .expect("enum should exists after early analysis")
+            .1
         {
             // Checking function body
-            Def::Function(id) => {
+            DefKind::Function(id) => {
                 let (params, ret, effects) = {
                     let f = self.tx.get_function(id);
                     (f.params.clone(), f.ret.clone(), f.effects.clone())
                 };
 
                 // set curr effects
-                let prev = std::mem::replace(
-                    &mut self.current_effects,
-                    effects,
-                );
+                let prev =
+                    std::mem::replace(&mut self.current_effects, effects);
 
                 // Entering function scope
                 self.resolver.enter_scope();
@@ -62,7 +61,7 @@ impl<'tx> InferCtxt<'tx> {
 
         // Declaring constant
         self.resolver
-            .declare_mod_def(&c.name, (p, Def::Const(value)));
+            .declare_mod_def(&c.name, (p, DefKind::Const(value)));
     }
 
     /// Performs late analysis of module

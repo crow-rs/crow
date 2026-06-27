@@ -1,7 +1,10 @@
 use crow_ast::atom::{BinOp, UnOp};
 use id_arena::Id;
 
-use crate::{def::{EffectRow, Enum}, typ::Typ};
+use crate::{
+    def::Enum,
+    typ::{EffectRow, Typ},
+};
 
 pub struct HirModule {
     pub functions: Vec<HirFunction>,
@@ -23,7 +26,7 @@ pub struct HirNativeFun {
     pub name: String,
     pub params: Vec<(String, Typ)>,
     pub ret: Typ,
-    pub body: String, 
+    pub body: String,
     pub effects: EffectRow,
 }
 

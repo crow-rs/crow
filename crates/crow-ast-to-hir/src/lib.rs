@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+/// Imports
 use crow_ast::{
     atom::{BinOp, Lit, Publicity},
     expr::{Case, Expr, ExprKind, Pat, PatKind},
@@ -8,22 +7,31 @@ use crow_ast::{
 };
 use crow_tycheck::{
     ctxt::typ::TypesCtxt,
-    def::{Def, EffectRow},
+    def::{Def, DefKind},
     hir::{
         HirCase, HirConst, HirEnum, HirExpr, HirExprKind, HirFunction,
         HirLit, HirModule, HirNativeFun, HirPat, HirStmt, HirStruct,
         HirVariant,
     },
-    typ::{Typ, Var},
+    typ::{EffectRow, Typ, Var},
 };
+use std::collections::HashMap;
 
-pub struct HirBuilder<'tx> {
+/// Defines `AST` -> `TIR` builder
+pub struct TirBuilder<'tx> {
+    /// Types context reference
     tx: &'tx TypesCtxt,
+
+    /// Definitions mapping
     defs: HashMap<String, Def>,
+
+    /// Scopes stack
     scopes: Vec<HashMap<String, Typ>>,
 }
 
-impl<'tx> HirBuilder<'tx> {
+/// TIR builder implementation
+impl<'tx> TirBuilder<'tx> {
+    /// Creates new TIR builder
     pub fn new(tx: &'tx TypesCtxt, defs: HashMap<String, Def>) -> Self {
         Self {
             tx,
@@ -32,14 +40,17 @@ impl<'tx> HirBuilder<'tx> {
         }
     }
 
+    /// Enters scope by pushing a new one onto the stack
     fn enter_scope(&mut self) {
         self.scopes.push(HashMap::new());
     }
 
+    /// Exits scope by popping one from the stack
     fn exit_scope(&mut self) {
         self.scopes.pop();
     }
 
+    /// Declares local
     fn declare_local(&mut self, name: &str, ty: Typ) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name.to_string(), ty);
@@ -55,10 +66,9 @@ impl<'tx> HirBuilder<'tx> {
         None
     }
 
-    fn resolve_def(&self, name: &str) -> Option<&Def> {
-        self.defs.get(name)
+    fn resolve_def(&self, name: &str) -> Option<&DefKind> {
+        self.defs.get(name).map(|def| &def.1)
     }
-
 
     pub fn build(mut self, module: &Module) -> HirModule {
         let mut functions = Vec::new();
@@ -90,7 +100,7 @@ impl<'tx> HirBuilder<'tx> {
 
     fn lower_struct(&self, s: &Struct) -> HirStruct {
         let def_id = match self.resolve_def(&s.name) {
-            Some(Def::Struct(id)) => *id,
+            Some(DefKind::Struct(id)) => *id,
             _ => unreachable!("struct should exist after typeck"),
         };
         let def = self.tx.get_struct(def_id);
@@ -107,7 +117,7 @@ impl<'tx> HirBuilder<'tx> {
 
     fn lower_enum(&self, e: &Enum) -> HirEnum {
         let def_id = match self.resolve_def(&e.name) {
-            Some(Def::Enum(id)) => *id,
+            Some(DefKind::Enum(id)) => *id,
             _ => unreachable!("enum should exist after typeck"),
         };
         let def = self.tx.get_enum(def_id);
@@ -131,7 +141,7 @@ impl<'tx> HirBuilder<'tx> {
 
     fn lower_fun(&mut self, f: &Fun) -> HirFunction {
         let def_id = match self.resolve_def(&f.name) {
-            Some(Def::Function(id)) => *id,
+            Some(DefKind::Function(id)) => *id,
             _ => unreachable!("function should exist after typeck"),
         };
 
@@ -166,7 +176,7 @@ impl<'tx> HirBuilder<'tx> {
 
     fn lower_native(&self, n: &NativeFun) -> HirNativeFun {
         let def_id = match self.resolve_def(&n.name) {
-            Some(Def::Function(id)) => *id,
+            Some(DefKind::Function(id)) => *id,
             _ => unreachable!("native should exist after typeck"),
         };
 
@@ -188,7 +198,7 @@ impl<'tx> HirBuilder<'tx> {
 
     fn lower_const(&mut self, _pub: Publicity, c: &Const) -> HirConst {
         let ty = match self.resolve_def(&c.name) {
-            Some(Def::Const(ty)) => self.apply(ty.clone()),
+            Some(DefKind::Const(ty)) => self.apply(ty.clone()),
             _ => unreachable!("const should exist after typeck"),
         };
 
@@ -212,7 +222,11 @@ impl<'tx> HirBuilder<'tx> {
                 let ty = self.binop_result_type(*op, &lhs.ty);
                 HirExpr {
                     ty,
-                    kind: HirExprKind::BinOp(*op, Box::new(lhs), Box::new(rhs)),
+                    kind: HirExprKind::BinOp(
+                        *op,
+                        Box::new(lhs),
+                        Box::new(rhs),
+                    ),
                 }
             }
 
@@ -230,7 +244,10 @@ impl<'tx> HirBuilder<'tx> {
                 let rhs = self.lower_expr(rhs);
                 HirExpr {
                     ty: Typ::Unit,
-                    kind: HirExprKind::Assign(Box::new(lhs), Box::new(rhs)),
+                    kind: HirExprKind::Assign(
+                        Box::new(lhs),
+                        Box::new(rhs),
+                    ),
                 }
             }
 
@@ -303,13 +320,18 @@ impl<'tx> HirBuilder<'tx> {
 
                 HirExpr {
                     ty: fn_ty,
-                    kind: HirExprKind::Lambda(typed_params, Box::new(body)),
+                    kind: HirExprKind::Lambda(
+                        typed_params,
+                        Box::new(body),
+                    ),
                 }
             }
 
             ExprKind::Match(scrutinees, cases) => {
-                let scrutinees: Vec<HirExpr> =
-                    scrutinees.iter().map(|s| self.lower_expr(s)).collect();
+                let scrutinees: Vec<HirExpr> = scrutinees
+                    .iter()
+                    .map(|s| self.lower_expr(s))
+                    .collect();
                 let cases: Vec<HirCase> = cases
                     .iter()
                     .map(|c| self.lower_case(c, &scrutinees))
@@ -390,7 +412,7 @@ impl<'tx> HirBuilder<'tx> {
 
         // Try top-level def
         match self.resolve_def(name) {
-            Some(Def::Function(id)) => {
+            Some(DefKind::Function(id)) => {
                 let fun = self.tx.get_function(*id);
                 let ty = Typ::Fun(*id, vec![], fun.effects.clone());
                 HirExpr {
@@ -398,11 +420,11 @@ impl<'tx> HirBuilder<'tx> {
                     kind: HirExprKind::Var(name.to_string()),
                 }
             }
-            Some(Def::Const(ty)) => HirExpr {
+            Some(DefKind::Const(ty)) => HirExpr {
                 ty: self.apply(ty.clone()),
                 kind: HirExprKind::Var(name.to_string()),
             },
-            Some(Def::Variant(enum_id, _idx)) => {
+            Some(DefKind::Variant(enum_id, _idx)) => {
                 let ty = Typ::Enum(*enum_id, vec![]);
                 HirExpr {
                     ty: self.apply(ty),
@@ -458,10 +480,8 @@ impl<'tx> HirBuilder<'tx> {
     ) -> HirCase {
         self.enter_scope();
 
-        let scrut_ty = scrutinees
-            .first()
-            .map(|s| &s.ty)
-            .unwrap_or(&Typ::Error);
+        let scrut_ty =
+            scrutinees.first().map(|s| &s.ty).unwrap_or(&Typ::Error);
 
         let pats: Vec<HirPat> = case
             .pats
@@ -482,7 +502,7 @@ impl<'tx> HirBuilder<'tx> {
 
             PatKind::Variant(expr) => {
                 if let ExprKind::Var(name) = &expr.kind {
-                    if let Some(Def::Variant(enum_id, idx)) =
+                    if let Some(DefKind::Variant(enum_id, idx)) =
                         self.resolve_def(name)
                     {
                         return HirPat::Variant(*enum_id, *idx);
@@ -493,15 +513,13 @@ impl<'tx> HirBuilder<'tx> {
 
             PatKind::Unpack(expr, sub_pats) => {
                 if let ExprKind::Var(name) = &expr.kind {
-                    if let Some(&Def::Variant(enum_id, idx)) =
+                    if let Some(&DefKind::Variant(enum_id, idx)) =
                         self.resolve_def(name)
                     {
-                        let variant_fields = self
-                            .tx
-                            .get_enum(enum_id)
-                            .variants[idx]
-                            .fields
-                            .clone();
+                        let variant_fields =
+                            self.tx.get_enum(enum_id).variants[idx]
+                                .fields
+                                .clone();
 
                         let sub: Vec<HirPat> = sub_pats
                             .iter()
@@ -547,7 +565,7 @@ impl<'tx> HirBuilder<'tx> {
             Lit::None => HirLit::Unit,
         }
     }
-    
+
     fn apply(&self, ty: Typ) -> Typ {
         match ty {
             Typ::Var(id) => match self.tx.get_var(id) {
@@ -605,17 +623,20 @@ impl<'tx> HirBuilder<'tx> {
 
     fn binop_result_type(&self, op: BinOp, operand_ty: &Typ) -> Typ {
         match op {
-            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le
-            | BinOp::Gt | BinOp::Ge | BinOp::And | BinOp::Or => Typ::Bool,
+            BinOp::Eq
+            | BinOp::Ne
+            | BinOp::Lt
+            | BinOp::Le
+            | BinOp::Gt
+            | BinOp::Ge
+            | BinOp::And
+            | BinOp::Or => Typ::Bool,
             BinOp::Concat => Typ::Str,
             _ => operand_ty.clone(),
         }
     }
 
-    fn lower_type_hint(
-        &self,
-        hint: &crow_ast::atom::TypeHint,
-    ) -> Typ {
+    fn lower_type_hint(&self, hint: &crow_ast::atom::TypeHint) -> Typ {
         use crow_ast::atom::TypeHint;
         match hint {
             TypeHint::Local { name, .. } => match name.as_str() {
@@ -624,9 +645,11 @@ impl<'tx> HirBuilder<'tx> {
                 "bool" => Typ::Bool,
                 "str" => Typ::Str,
                 _ => {
-                    if let Some(Def::Struct(id)) = self.resolve_def(name) {
+                    if let Some(DefKind::Struct(id)) =
+                        self.resolve_def(name)
+                    {
                         Typ::Struct(*id, vec![])
-                    } else if let Some(Def::Enum(id)) =
+                    } else if let Some(DefKind::Enum(id)) =
                         self.resolve_def(name)
                     {
                         Typ::Enum(*id, vec![])
@@ -637,8 +660,10 @@ impl<'tx> HirBuilder<'tx> {
             },
             TypeHint::Unit(_) => Typ::Unit,
             TypeHint::Fun { params, ret, .. } => {
-                let params: Vec<Typ> =
-                    params.iter().map(|p| self.lower_type_hint(p)).collect();
+                let params: Vec<Typ> = params
+                    .iter()
+                    .map(|p| self.lower_type_hint(p))
+                    .collect();
                 let ret = self.lower_type_hint(ret);
                 Typ::FunRef(
                     Box::new(ret),
@@ -660,6 +685,6 @@ pub fn build_hir(
     defs: HashMap<String, Def>,
     module: &Module,
 ) -> HirModule {
-    let builder = HirBuilder::new(tx, defs);
+    let builder = TirBuilder::new(tx, defs);
     builder.build(module)
 }

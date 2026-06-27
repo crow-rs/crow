@@ -4,7 +4,9 @@ mod ribs;
 
 /// Imports
 use crate::{
-    def::{Def, ModDef, Module}, resolve::{generics::GenericsStack, ribs::RibsStack}, typ::{Effects, Typ},
+    def::{Def, Module},
+    resolve::{generics::GenericsStack, ribs::RibsStack},
+    typ::{Effect, Typ},
 };
 use crow_macros::bug;
 use id_arena::Id;
@@ -20,7 +22,7 @@ pub struct Resolver {
     generics: GenericsStack,
 
     /// Top-level defs
-    defs: HashMap<String, ModDef>,
+    defs: HashMap<String, Def>,
 
     /// Imported modules
     imported_mods: HashMap<String, Id<Module>>,
@@ -31,14 +33,14 @@ pub struct Resolver {
 
 /// Implementation
 impl Resolver {
+    /// Exports definitions
     pub fn export_defs(&self) -> HashMap<String, Def> {
         self.defs
             .iter()
-            .map(|(name, (_, def))| (name.clone(), def.clone()))
+            .map(|(name, def)| (name.clone(), def.clone()))
             .collect()
     }
 
-    
     /// Enters generics scope
     pub fn enter_generics(&mut self, g: Vec<String>) {
         self.generics.enter(g);
@@ -62,7 +64,7 @@ impl Resolver {
     /// Resolves module-level def
     pub fn resolve_mod_def(&mut self, name: &str) -> Option<Def> {
         match self.defs.get(name) {
-            Some(def) => Some(def.1.clone()),
+            Some(def) => Some(def.clone()),
             None => self.imported_defs.get(name).map(|def| def.clone()),
         }
     }
@@ -83,7 +85,7 @@ impl Resolver {
     }
 
     /// Declares module-level def. Returns true on success
-    pub fn declare_mod_def(&mut self, name: &str, def: ModDef) -> bool {
+    pub fn declare_mod_def(&mut self, name: &str, def: Def) -> bool {
         if !self.defs.contains_key(name) {
             self.defs.insert(name.to_string(), def);
             true
@@ -102,15 +104,18 @@ impl Resolver {
         self.imported_mods.insert(name.to_string(), m);
     }
 
-    pub fn resolve_effect(&mut self, name: &str) -> Effects {
+    /// Resolves effect
+    pub fn resolve_effect(&mut self, name: &str) -> Effect {
         match name {
-            "exn" => Effects::Exn,
-            "div" => Effects::Div,
-            "io" => Effects::Io,
-            "console" => Effects::Console,
-            "ndet" => Effects::Ndet,
-            "tot" => Effects::Total,
-            _ => bug!("User defined effects are not supported right now :(")
+            "exn" => Effect::Exn,
+            "div" => Effect::Div,
+            "io" => Effect::IO,
+            "console" => Effect::Console,
+            "ndet" => Effect::Ndet,
+            "tot" => Effect::Total,
+            _ => {
+                bug!("User defined effects are not supported right now :(")
+            }
         }
     }
 }

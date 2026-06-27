@@ -1,17 +1,18 @@
-use std::collections::HashMap;
-
 /// Imports
 use crate::{
-    def::{EffectRow, Enum, Function, Module, Struct}, typ::Var,
+    def::{Effect, Enum, Function, Module, Struct},
+    typ::{EffectRow, Var},
 };
 use crow_macros::bug;
 use id_arena::{Arena, Id};
+use std::collections::HashMap;
 
 /// Represents types context that stores all the types info
 pub struct TypesCtxt {
     /// Arenas for definitions
     pub structs: Arena<Struct>,
     pub enums: Arena<Enum>,
+    pub effects: Arena<Effect>,
     pub functions: Arena<Function>,
 
     /// Modules arena
@@ -20,7 +21,8 @@ pub struct TypesCtxt {
     /// Type variables arena
     pub vars: Arena<Var>,
 
-    effect_rows: HashMap<Id<Var>, EffectRow>,
+    /// Type variable effects
+    pub var_effects: HashMap<Id<Var>, EffectRow>,
 }
 
 /// Implementation
@@ -35,10 +37,11 @@ impl TypesCtxt {
         Self {
             structs: Arena::new(),
             enums: Arena::new(),
+            effects: Arena::new(),
             functions: Arena::new(),
             vars: Arena::new(),
             mods: Arena::new(),
-            effect_rows: HashMap::new(),
+            var_effects: HashMap::new(),
         }
     }
 
@@ -80,6 +83,25 @@ impl TypesCtxt {
             .unwrap_or_else(|| bug!(format!("enum not found: {:?}", id)))
     }
 
+    /// Inserts effect
+    pub fn insert_eff(&mut self, e: Effect) -> Id<Effect> {
+        self.effects.alloc(e)
+    }
+
+    /// Returns ref to effect
+    pub fn get_eff(&self, id: Id<Effect>) -> &Effect {
+        self.effects
+            .get(id)
+            .unwrap_or_else(|| bug!(format!("effect not found: {:?}", id)))
+    }
+
+    /// Returns mutable ref to effect
+    pub fn get_eff_mut(&mut self, id: Id<Effect>) -> &mut Effect {
+        self.effects
+            .get_mut(id)
+            .unwrap_or_else(|| bug!(format!("effect not found: {:?}", id)))
+    }
+
     /// Inserts function
     pub fn insert_function(&mut self, f: Function) -> Id<Function> {
         self.functions.alloc(f)
@@ -87,16 +109,16 @@ impl TypesCtxt {
 
     /// Returns ref to function
     pub fn get_function(&self, id: Id<Function>) -> &Function {
-        self.functions
-            .get(id)
-            .unwrap_or_else(|| bug!(format!("Function not found: {:?}", id)))
+        self.functions.get(id).unwrap_or_else(|| {
+            bug!(format!("Function not found: {:?}", id))
+        })
     }
 
     /// Returns mutable ref to function
     pub fn get_function_mut(&mut self, id: Id<Function>) -> &mut Function {
-        self.functions
-            .get_mut(id)
-            .unwrap_or_else(|| bug!(format!("Function not found: {:?}", id)))
+        self.functions.get_mut(id).unwrap_or_else(|| {
+            bug!(format!("Function not found: {:?}", id))
+        })
     }
 
     /// Inserts variable
@@ -137,11 +159,13 @@ impl TypesCtxt {
             .unwrap_or_else(|| bug!(format!("module not found: {:?}", id)))
     }
 
+    /// Binds effect row
     pub fn bind_effect_row(&mut self, id: Id<Var>, row: EffectRow) {
-        self.effect_rows.insert(id, row);
+        self.var_effects.insert(id, row);
     }
 
+    /// Returns effect by id
     pub fn get_effect_row(&self, id: Id<Var>) -> Option<&EffectRow> {
-        self.effect_rows.get(&id)
+        self.var_effects.get(&id)
     }
 }

@@ -1,15 +1,9 @@
 /// Imports
-use crate::typ::{Effects, Typ, Var};
+use crate::typ::{EffectRow, Typ};
 use crow_ast::atom::Publicity;
 use crow_lex::token::Span;
 use id_arena::Id;
 use std::collections::HashMap;
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct EffectRow {
-    pub known: Vec<Effects>,
-    pub tail: Option<Id<Var>>
-}
 
 /// Defines a field in the type system
 #[derive(Clone)]
@@ -41,30 +35,36 @@ pub struct Enum {
     pub variants: Vec<Variant>,
 }
 
+/// Defines an effect in the type system
+pub struct Effect {
+    pub name: String,
+}
+
 /// Defines a function in the type system
 pub struct Function {
     pub name: String,
     pub generics: Vec<String>,
     pub params: Vec<Typ>,
     pub ret: Typ,
-    pub effects: EffectRow
+    pub effects: EffectRow,
 }
 
-/// Represents definition
+/// Represents module definition kind
 #[derive(Clone)]
-pub enum Def {
+pub enum DefKind {
     Struct(Id<Struct>),
     Enum(Id<Enum>),
+    Effect(Id<Effect>),
     Function(Id<Function>),
     Const(Typ),
     Variant(Id<Enum>, usize),
 }
 
 /// Represents module definition
-pub type ModDef = (Publicity, Def);
+pub type Def = (Publicity, DefKind);
 
 /// Defines a module in the type system
 pub struct Module {
     pub name: String,
-    pub defs: HashMap<String, ModDef>,
+    pub defs: HashMap<String, Def>,
 }

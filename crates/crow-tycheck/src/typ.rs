@@ -1,5 +1,5 @@
 /// Imports
-use crate::def::{EffectRow, Enum, Function, Module, Struct};
+use crate::def;
 use id_arena::Id;
 
 /// Defines a type variable
@@ -14,10 +14,11 @@ pub enum Var {
 /// Defines meta type
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Meta {
-    Module(Id<Module>),
-    Variant(Id<Enum>, usize),
-    Struct(Id<Struct>),
-    Enum(Id<Enum>),
+    Module(Id<def::Module>),
+    Variant(Id<def::Enum>, usize),
+    Struct(Id<def::Struct>),
+    Enum(Id<def::Enum>),
+    Effect(Id<def::Effect>),
 }
 
 /// Defines a type in the type system
@@ -31,11 +32,11 @@ pub enum Typ {
 
     /// Function types
     FunRef(Box<Typ>, Vec<Typ>, EffectRow),
-    Fun(Id<Function>, Vec<Typ>, EffectRow),
+    Fun(Id<def::Function>, Vec<Typ>, EffectRow),
 
     /// Algebraic data types
-    Struct(Id<Struct>, Vec<Typ>),
-    Enum(Id<Enum>, Vec<Typ>),
+    Struct(Id<def::Struct>, Vec<Typ>),
+    Enum(Id<def::Enum>, Vec<Typ>),
 
     /// Inference variables
     Var(Id<Var>),
@@ -49,13 +50,21 @@ pub enum Typ {
     Error,
 }
 
+/// Defines an effect
 #[derive(Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum Effects {
+pub enum Effect {
     Total,
     Exn,
     Div,
     Ndet,
     Console,
-    Io,
-    UserDefined(Id<EffectRow>)
+    IO,
+    UserDefined(Id<def::Effect>),
+}
+
+/// Defines effects row
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct EffectRow {
+    pub known: Vec<Effect>,
+    pub tail: Option<Id<Var>>,
 }

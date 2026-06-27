@@ -1,7 +1,7 @@
 /// Implementation
 use crate::{
-    ctxt::check::InferCtxt,
-    def::{self, Def},
+    ctxt::infer::InferCtxt,
+    def::{self, DefKind},
     errors::TypeckError,
 };
 use crow_ast::{
@@ -21,15 +21,15 @@ impl<'tx> InferCtxt<'tx> {
         p: Publicity,
         s: &Struct,
     ) {
-        let def = (
+        let mod_def = (
             p,
-            Def::Struct(self.tx.insert_struct(def::Struct {
+            DefKind::Struct(self.tx.insert_struct(def::Struct {
                 name: s.name.clone(),
                 generics: s.generics.clone(),
                 fields: Vec::new(),
             })),
         );
-        if !self.resolver.declare_mod_def(&s.name, def) {
+        if !self.resolver.declare_mod_def(&s.name, mod_def) {
             bail!(TypeckError::ModDefRedefinition {
                 src: span.0.clone(),
                 span: span.1.clone().into(),
@@ -46,15 +46,15 @@ impl<'tx> InferCtxt<'tx> {
         p: Publicity,
         e: &Enum,
     ) {
-        let def = (
+        let mod_def = (
             p,
-            Def::Enum(self.tx.insert_enum(def::Enum {
+            DefKind::Enum(self.tx.insert_enum(def::Enum {
                 name: e.name.clone(),
                 generics: e.generics.clone(),
                 variants: Vec::new(),
             })),
         );
-        if !self.resolver.declare_mod_def(&e.name, def) {
+        if !self.resolver.declare_mod_def(&e.name, mod_def) {
             bail!(TypeckError::ModDefRedefinition {
                 src: span.0.clone(),
                 span: span.1.clone().into(),

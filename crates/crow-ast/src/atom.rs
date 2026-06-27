@@ -1,8 +1,6 @@
 /// Imports
 use crow_lex::token::Span;
 
-use crate::item::EffectHint;
-
 /// Represents item publicity
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Publicity {
@@ -70,6 +68,22 @@ pub enum Lit {
     None,
 }
 
+/// Represents an effect hint (effect annotation)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EffectHint {
+    pub name: String,
+}
+
+/// Represents effects of function
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Effects {
+    // Known effects list
+    pub known: Vec<EffectHint>,
+
+    // Effects tail
+    pub tail: Option<char>,
+}
+
 /// Represents a type hint (type annotation)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeHint {
@@ -99,7 +113,7 @@ pub enum TypeHint {
         span: Span,
         params: Vec<TypeHint>,
         ret: Box<TypeHint>,
-        effects: EffectHint
+        effects: Effects,
     },
 
     /// Unit type `()`

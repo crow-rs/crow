@@ -152,7 +152,7 @@ pub(crate) enum TypeckError {
         en: String,
     },
 
-    #[error("undefined effect")]
+    #[error("undefined effect `{name}`")]
     #[diagnostic(code(typeck::undefined_effect))]
     UndefinedEffect {
         #[source_code]
@@ -170,7 +170,7 @@ pub(crate) enum TypeckError {
         #[label("access here...")]
         span: SourceSpan,
         expected: String,
-        got: String
+        got: String,
     },
 }
 

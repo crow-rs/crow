@@ -1,6 +1,8 @@
 /// Imports
 use crate::{
-    ctxt::check::InferCtxt, def::{Def, EffectRow, Field, Function, Variant},
+    ctxt::infer::InferCtxt,
+    def::{DefKind, Field, Function, Variant},
+    typ::EffectRow,
 };
 use crow_ast::{
     atom::Publicity,
@@ -19,9 +21,10 @@ impl<'tx> InferCtxt<'tx> {
             .resolver
             .resolve_mod_def(&s.name)
             .expect("struct should exists after early analysis")
+            .1
         {
             // Updating definition
-            Def::Struct(id) => {
+            DefKind::Struct(id) => {
                 self.tx.get_struct_mut(id).fields = s
                     .fields
                     .iter()
@@ -47,8 +50,9 @@ impl<'tx> InferCtxt<'tx> {
             .resolver
             .resolve_mod_def(&e.name)
             .expect("enum should exists after early analysis")
+            .1
         {
-            Def::Enum(id) => {
+            DefKind::Enum(id) => {
                 // Updating definition
                 self.tx.get_enum_mut(id).variants = e
                     .variants
@@ -68,7 +72,7 @@ impl<'tx> InferCtxt<'tx> {
                 for (idx, variant) in e.variants.iter().enumerate() {
                     self.resolver.declare_mod_def(
                         &variant.name,
-                        (p, Def::Variant(id, idx)),
+                        (p, DefKind::Variant(id, idx)),
                     );
                 }
             }
@@ -92,13 +96,13 @@ impl<'tx> InferCtxt<'tx> {
                 .map(|param| self.infer_type_hint(&param.hint))
                 .collect(),
             ret: self.infer_type_hint(&f.ret),
-            effects: self.infer_effect_hint(Some(&f.effects))
+            effects: self.infer_effects(&f.effects),
         };
         self.resolver.exit_generics();
         // Declaring function
         self.resolver.declare_mod_def(
             &f.name,
-            (p, Def::Function(self.tx.insert_function(def))),
+            (p, DefKind::Function(self.tx.insert_function(def))),
         );
     }
 
@@ -117,16 +121,17 @@ impl<'tx> InferCtxt<'tx> {
                 .map(|param| self.infer_type_hint(&param.hint))
                 .collect(),
             ret: self.infer_type_hint(&f.ret),
-            effects: EffectRow { // todo - add effects to native function
+            effects: EffectRow {
+                // todo - add effects to native function
                 known: Vec::new(),
-                tail: None
-            }
+                tail: None,
+            },
         };
         self.resolver.exit_generics();
         // Declaring function
         self.resolver.declare_mod_def(
             &f.name,
-            (p, Def::Function(self.tx.insert_function(def))),
+            (p, DefKind::Function(self.tx.insert_function(def))),
         );
     }
 

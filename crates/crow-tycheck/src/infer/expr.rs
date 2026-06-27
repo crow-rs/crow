@@ -1,6 +1,9 @@
 /// Imports
 use crate::{
-    ctxt::check::InferCtxt, def::{Def, EffectRow, Enum, Function, Module, Struct, Variant}, errors::TypeckError, typ::{Meta, Typ},
+    ctxt::infer::InferCtxt,
+    def::{DefKind, Enum, Function, Module, Struct, Variant},
+    errors::TypeckError,
+    typ::{EffectRow, Meta, Typ},
 };
 use crow_ast::{
     atom::{BinOp, Lit, Param, Publicity, UnOp},
@@ -43,7 +46,7 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::InvalidUnOp {
                         src: span.0,
                         span: span.1.into(),
-                        t: self.pretty(&t),
+                        t: self.pretty_type(&t),
                         op
                     }
                 );
@@ -107,8 +110,8 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::InvalidBinOp {
                         src: span.0,
                         span: span.1.into(),
-                        a: self.pretty(&a),
-                        b: self.pretty(&b),
+                        a: self.pretty_type(&a),
+                        b: self.pretty_type(&b),
                         op
                     }
                 );
@@ -158,30 +161,33 @@ impl<'tx> InferCtxt<'tx> {
             Some(typ) => typ,
             // Module definition
             None => match self.resolver.resolve_mod_def(name) {
-                Some(Def::Const(t)) => t,
-                Some(Def::Enum(e)) => Typ::Meta(Meta::Enum(e)),
-                Some(Def::Struct(s)) => Typ::Meta(Meta::Struct(s)),
-                Some(Def::Function(id)) => {
-                    let fun = self.tx.get_function(id);
-                    let effects = fun.effects.clone();
-                    Typ::Fun(
-                        id,
-                        self.fresh_generic_args(fun.generics.len()),
-                        effects
-                    )
-                }
-                Some(Def::Variant(id, idx)) => {
-                    let en = self.tx.get_enum(id);
-                    let variant = en.variants[idx].clone();
-                    if variant.fields.is_empty() {
-                        Typ::Enum(
+                Some(def) => match def.1 {
+                    DefKind::Struct(id) => Typ::Meta(Meta::Struct(id)),
+                    DefKind::Enum(id) => Typ::Meta(Meta::Enum(id)),
+                    DefKind::Effect(id) => Typ::Meta(Meta::Effect(id)),
+                    DefKind::Function(id) => {
+                        let fun = self.tx.get_function(id);
+                        let effects = fun.effects.clone();
+                        Typ::Fun(
                             id,
-                            self.fresh_generic_args(en.generics.len()),
+                            self.fresh_generic_args(fun.generics.len()),
+                            effects,
                         )
-                    } else {
-                        Typ::Meta(Meta::Variant(id, idx))
                     }
-                }
+                    DefKind::Const(typ) => typ,
+                    DefKind::Variant(id, idx) => {
+                        let en = self.tx.get_enum(id);
+                        let variant = en.variants[idx].clone();
+                        if variant.fields.is_empty() {
+                            Typ::Enum(
+                                id,
+                                self.fresh_generic_args(en.generics.len()),
+                            )
+                        } else {
+                            Typ::Meta(Meta::Variant(id, idx))
+                        }
+                    }
+                },
                 // Module definition
                 None => match self.resolver.resolve_mod(name) {
                     Some(m) => Typ::Meta(Meta::Module(m)),
@@ -274,19 +280,20 @@ impl<'tx> InferCtxt<'tx> {
         match self.tx.get_mod(id).defs.get(name).cloned() {
             Some((p, def)) => {
                 let typ = match def {
-                    Def::Struct(id) => Typ::Meta(Meta::Struct(id)),
-                    Def::Enum(id) => Typ::Meta(Meta::Enum(id)),
-                    Def::Function(id) => {
+                    DefKind::Struct(id) => Typ::Meta(Meta::Struct(id)),
+                    DefKind::Enum(id) => Typ::Meta(Meta::Enum(id)),
+                    DefKind::Effect(id) => Typ::Meta(Meta::Effect(id)),
+                    DefKind::Function(id) => {
                         let fun = self.tx.get_function(id);
                         let effects = fun.effects.clone();
                         Typ::Fun(
                             id,
                             self.fresh_generic_args(fun.generics.len()),
-                            effects
+                            effects,
                         )
                     }
-                    Def::Const(typ) => typ.clone(),
-                    Def::Variant(id, idx) => {
+                    DefKind::Const(typ) => typ.clone(),
+                    DefKind::Variant(id, idx) => {
                         Typ::Meta(Meta::Variant(id, idx))
                     }
                 };
@@ -364,11 +371,12 @@ impl<'tx> InferCtxt<'tx> {
         id: Id<Function>,
         generics: Vec<Typ>,
         args: Vec<Typ>,
-        effects: EffectRow
+        effects: EffectRow,
     ) -> Typ {
         // Getting function
         let fun = self.tx.get_function(id);
         let fun_effects = fun.effects.clone();
+
         // Instantiating return type and param types
         let ret = self.subst(fun.ret.clone(), &generics);
         let params = fun
@@ -395,14 +403,18 @@ impl<'tx> InferCtxt<'tx> {
                 }
             );
         }
-        if let Err(_) = self.unify_effects(fun_effects.clone(), effects.clone()) {
+
+        // Unifying effects
+        if let Err(_) =
+            self.unify_effects(fun_effects.clone(), effects.clone())
+        {
             emit!(
                 self,
                 TypeckError::EffectsMismatch {
                     src: span.0,
                     span: span.1.into(),
-                    expected: self.pretty_effects(&effects),
-                    got: self.pretty_effects(&fun_effects)
+                    expected: self.pretty_effect_row(&effects),
+                    got: self.pretty_effect_row(&fun_effects)
                 }
             );
         }
@@ -438,14 +450,16 @@ impl<'tx> InferCtxt<'tx> {
         }
 
         // callee's effects must fit into caller's
-        if let Err(_) = self.unify_effects(callee_effects.clone(), caller_effects.clone()) {
+        if let Err(_) = self
+            .unify_effects(callee_effects.clone(), caller_effects.clone())
+        {
             emit!(
                 self,
                 TypeckError::EffectsMismatch {
                     src: span.0,
                     span: span.1.into(),
-                    expected: self.pretty_effects(&callee_effects),
-                    got: self.pretty_effects(&caller_effects)
+                    expected: self.pretty_effect_row(&callee_effects),
+                    got: self.pretty_effect_row(&caller_effects)
                 }
             );
         }
@@ -561,12 +575,22 @@ impl<'tx> InferCtxt<'tx> {
         // Matching callee
         match callee {
             // Function call
-            Typ::Fun(id, generics, _effects) => {
-                self.infer_fun_call(span, id, generics, args, self.current_effects.clone())
-            }
-            Typ::FunRef(ret, params, fn_effects) => {
-                self.infer_fun_ref_call(span, *ret, params, args, fn_effects, self.current_effects.clone())
-            }
+            Typ::Fun(id, generics, _effects) => self.infer_fun_call(
+                span,
+                id,
+                generics,
+                args,
+                self.current_effects.clone(),
+            ),
+            Typ::FunRef(ret, params, fn_effects) => self
+                .infer_fun_ref_call(
+                    span,
+                    *ret,
+                    params,
+                    args,
+                    fn_effects,
+                    self.current_effects.clone(),
+                ),
             // Struct call
             Typ::Meta(Meta::Struct(id)) => {
                 self.infer_struct_call(span, id, args)
@@ -582,7 +606,7 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::NonCallable {
                         src: span.0,
                         span: span.1.into(),
-                        typ: self.pretty(&other)
+                        typ: self.pretty_type(&other)
                     }
                 );
                 Typ::Error
@@ -614,10 +638,14 @@ impl<'tx> InferCtxt<'tx> {
 
         // Done!
         // question - can closure have effects?
-        Typ::FunRef(Box::new(ret), param_types, EffectRow{
-            known: Vec::new(),
-            tail: None
-        })
+        Typ::FunRef(
+            Box::new(ret),
+            param_types,
+            EffectRow {
+                known: Vec::new(),
+                tail: None,
+            },
+        )
     }
 
     /// Infers todo or panic expression
@@ -667,7 +695,7 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::InvalidPat {
                         src: span.0.clone(),
                         span: span.1.clone().into(),
-                        t: self.pretty(&other)
+                        t: self.pretty_type(&other)
                     }
                 )
             }
@@ -735,7 +763,7 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::InvalidPat {
                         src: span.0.clone(),
                         span: span.1.clone().into(),
-                        t: self.pretty(&other)
+                        t: self.pretty_type(&other)
                     }
                 )
             }
@@ -778,7 +806,7 @@ impl<'tx> InferCtxt<'tx> {
                 TypeckError::InvalidPat {
                     src: pat.span.0.clone(),
                     span: pat.span.1.clone().into(),
-                    t: self.pretty(&typ)
+                    t: self.pretty_type(&typ)
                 }
             ),
         }
@@ -802,8 +830,6 @@ impl<'tx> InferCtxt<'tx> {
             .iter()
             .map(|v| self.infer_expr(v))
             .collect::<Vec<_>>();
-
-        // Performing
 
         // Performing exhaustiveness check
         // ...

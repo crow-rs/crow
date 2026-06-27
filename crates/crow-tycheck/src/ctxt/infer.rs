@@ -1,18 +1,20 @@
 /// Imports
-use crate::{ctxt::typ::TypesCtxt, def::EffectRow, resolve::Resolver};
+use crate::{ctxt::typ::TypesCtxt, resolve::Resolver, typ::EffectRow};
 use crow_ast::item::Module;
 
-/// Module checking context used during module typechecking
+/// Defines general inference context
+/// used during module type-inference and type-checking
 pub struct InferCtxt<'tx> {
     /// Types context
     pub(crate) tx: &'tx mut TypesCtxt,
 
-    /// Definitions env
+    /// Definitions resolver
     pub resolver: Resolver,
 
     /// Does checker has error?
     pub(crate) has_error: bool,
 
+    /// Current effects
     pub(crate) current_effects: EffectRow,
 }
 
@@ -26,7 +28,7 @@ impl<'tx> InferCtxt<'tx> {
             has_error: false,
             current_effects: EffectRow {
                 known: vec![],
-                tail: None, 
+                tail: None,
             },
         }
     }

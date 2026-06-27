@@ -1,6 +1,8 @@
 /// Imports
 use crate::{
-    ctxt::check::InferCtxt, def::EffectRow, errors::TypeckError, typ::{Effects, Meta, Typ, Var},
+    ctxt::infer::InferCtxt,
+    errors::TypeckError,
+    typ::{Effect, EffectRow, Meta, Typ, Var},
 };
 use crow_lex::token::Span;
 use crow_macros::emit;
@@ -52,7 +54,7 @@ impl<'tx> InferCtxt<'tx> {
                     .into_iter()
                     .map(|a| self.subst(a, args))
                     .collect(),
-                effects
+                effects,
             ),
             other => other,
         }
@@ -63,22 +65,26 @@ impl<'tx> InferCtxt<'tx> {
     pub fn apply(&mut self, typ: Typ) -> Typ {
         match typ {
             Typ::Fun(id, args, eff) => {
-                let args = args.into_iter().map(|a| self.apply(a)).collect();
+                let args =
+                    args.into_iter().map(|a| self.apply(a)).collect();
                 let eff = self.apply_effect_row(eff);
                 Typ::Fun(id, args, eff)
             }
             Typ::FunRef(ret, params, eff) => {
                 let ret = self.apply(*ret);
-                let params = params.into_iter().map(|a| self.apply(a)).collect();
+                let params =
+                    params.into_iter().map(|a| self.apply(a)).collect();
                 let eff = self.apply_effect_row(eff);
                 Typ::FunRef(Box::new(ret), params, eff)
             }
             Typ::Struct(id, args) => {
-                let args = args.into_iter().map(|a| self.apply(a)).collect();
+                let args =
+                    args.into_iter().map(|a| self.apply(a)).collect();
                 Typ::Struct(id, args)
             }
             Typ::Enum(id, args) => {
-                let args = args.into_iter().map(|a| self.apply(a)).collect();
+                let args =
+                    args.into_iter().map(|a| self.apply(a)).collect();
                 Typ::Enum(id, args)
             }
             Typ::Var(id) => match self.tx.get_var(id) {
@@ -89,6 +95,7 @@ impl<'tx> InferCtxt<'tx> {
         }
     }
 
+    /// Applies effects row substitutions
     fn apply_effect_row(&mut self, row: EffectRow) -> EffectRow {
         match row.tail {
             Some(var) => match self.tx.get_effect_row(var) {
@@ -126,8 +133,8 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::TypesMissmatch {
                         src: span.0.clone(),
                         span: span.1.clone().into(),
-                        expected: self.pretty(&a),
-                        got: self.pretty(&b),
+                        expected: self.pretty_type(&a),
+                        got: self.pretty_type(&b),
                     }
                 ),
                 UnifyError::Occurs => emit!(
@@ -135,30 +142,38 @@ impl<'tx> InferCtxt<'tx> {
                     TypeckError::RecursiveType {
                         src: span.0.clone(),
                         span: span.1.clone().into(),
-                        t: self.pretty(&a),
+                        t: self.pretty_type(&a),
                     }
                 ),
             }
         }
     }
 
+    /// Unifies effect rows
     pub fn unify_effects(
         &mut self,
         a: EffectRow,
         b: EffectRow,
     ) -> Result<(), UnifyError> {
+        // Resolving effect rows
         let a = self.resolve_effect_row(a);
         let b = self.resolve_effect_row(b);
 
-        let only_a: Vec<_> = a.known.iter()
+        // Resolving known effects
+        let only_a: Vec<_> = a
+            .known
+            .iter()
             .filter(|e| !b.known.contains(e))
             .cloned()
             .collect();
-        let only_b: Vec<_> = b.known.iter()
+        let only_b: Vec<_> = b
+            .known
+            .iter()
             .filter(|e| !a.known.contains(e))
             .cloned()
             .collect();
 
+        // Unifying tails
         match (a.tail, b.tail) {
             (None, None) => {
                 if only_a.is_empty() && only_b.is_empty() {
@@ -171,32 +186,44 @@ impl<'tx> InferCtxt<'tx> {
                 if !only_a.is_empty() {
                     return Err(UnifyError::Mismatch);
                 }
-                self.bind_effect_row(var, EffectRow {
-                    known: only_b,
-                    tail: None,
-                });
+                self.bind_effect_row(
+                    var,
+                    EffectRow {
+                        known: only_b,
+                        tail: None,
+                    },
+                );
                 Ok(())
             }
             (None, Some(var)) => {
                 if !only_b.is_empty() {
                     return Err(UnifyError::Mismatch);
                 }
-                self.bind_effect_row(var, EffectRow {
-                    known: only_a,
-                    tail: None,
-                });
+                self.bind_effect_row(
+                    var,
+                    EffectRow {
+                        known: only_a,
+                        tail: None,
+                    },
+                );
                 Ok(())
             }
             (Some(var_a), Some(var_b)) => {
                 let fresh = self.fresh();
-                self.bind_effect_row(var_a, EffectRow {
-                    known: only_b,
-                    tail: Some(fresh),
-                });
-                self.bind_effect_row(var_b, EffectRow {
-                    known: only_a,
-                    tail: Some(fresh),
-                });
+                self.bind_effect_row(
+                    var_a,
+                    EffectRow {
+                        known: only_b,
+                        tail: Some(fresh),
+                    },
+                );
+                self.bind_effect_row(
+                    var_b,
+                    EffectRow {
+                        known: only_a,
+                        tail: Some(fresh),
+                    },
+                );
                 Ok(())
             }
         }
@@ -210,7 +237,7 @@ impl<'tx> InferCtxt<'tx> {
         match row.tail {
             Some(var) => match self.tx.get_var(var) {
                 Var::Bound(Typ::Var(next)) => {
-                    // chain — follow the variable
+                    // chain - follow the variable
                     self.resolve_effect_row(EffectRow {
                         known: row.known,
                         tail: Some(*next),
@@ -264,7 +291,9 @@ impl<'tx> InferCtxt<'tx> {
             }
 
             // Unifying functions
-            (Typ::Fun(id1, args1, eff1), Typ::Fun(id2, args2, eff2)) if id1 == id2 => {
+            (Typ::Fun(id1, args1, eff1), Typ::Fun(id2, args2, eff2))
+                if id1 == id2 =>
+            {
                 for (a, b) in args1.into_iter().zip(args2) {
                     self.unify(a, b)?;
                 }
@@ -273,7 +302,10 @@ impl<'tx> InferCtxt<'tx> {
             }
 
             // Unifying function references
-            (Typ::FunRef(ret1, params1, eff1), Typ::FunRef(ret2, params2, eff2)) => {
+            (
+                Typ::FunRef(ret1, params1, eff1),
+                Typ::FunRef(ret2, params2, eff2),
+            ) => {
                 self.unify(*ret1, *ret2)?;
                 for (a, b) in params1.into_iter().zip(params2) {
                     self.unify(a, b)?;
@@ -283,7 +315,10 @@ impl<'tx> InferCtxt<'tx> {
             }
 
             // Unifying function references
-            (Typ::Fun(id, args, eff1), Typ::FunRef(ret1, params1, eff2)) => {
+            (
+                Typ::Fun(id, args, eff1),
+                Typ::FunRef(ret1, params1, eff2),
+            ) => {
                 let fun = self.tx.get_function(id);
 
                 let (ret1, params1) = (
@@ -363,33 +398,49 @@ impl<'tx> InferCtxt<'tx> {
         }
     }
 
-    pub fn pretty_effects(&self, eff: &EffectRow) -> String {
-        let mut parts: Vec<String> = eff.known
-            .iter()
-            .map(|e| match e {
-                Effects::Exn => "Exn",
-                Effects::Div => "Div",
-                Effects::Io => "IO",
-                Effects::Console => "Console",
-                Effects::Ndet => "Ndet",
-                Effects::Total => "Total",
-                Effects::UserDefined(_) => "?",
-            }.to_string())
-            .collect();
+    /// Pretty prints effect
+    pub fn pretty_effect(&self, eff: &Effect) -> String {
+        match eff {
+            Effect::Exn => "Exn",
+            Effect::Div => "Div",
+            Effect::IO => "IO",
+            Effect::Console => "Console",
+            Effect::Ndet => "Ndet",
+            Effect::Total => "Total",
+            Effect::UserDefined(id) => &self.tx.get_eff(*id).name,
+        }
+        .to_string()
+    }
 
+    /// Pretty prints effects row
+    pub fn pretty_effect_row(&self, eff: &EffectRow) -> String {
+        // Pretty printing buffer
+        let mut buffer = String::new();
+
+        // Pretty printing effects
+        buffer.push_str(
+            &eff.known
+                .iter()
+                .map(|eff| self.pretty_effect(eff))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+
+        // If tail presented
         if let Some(_) = eff.tail {
-            parts.push("e".to_string());
+            buffer.push_str(":e");
         }
 
-        if parts.is_empty() {
+        // If effects empty
+        if buffer.is_empty() {
             "Total".to_string()
         } else {
-            format!("<{}>", parts.join(", "))
+            format!("<{buffer}>")
         }
     }
 
     /// Returns human-readable type representation
-    pub fn pretty(&self, ty: &Typ) -> String {
+    pub fn pretty_type(&self, ty: &Typ) -> String {
         match ty {
             Typ::Int => "int".to_string(),
             Typ::Float => "float".to_string(),
@@ -405,7 +456,7 @@ impl<'tx> InferCtxt<'tx> {
                 } else {
                     let args = args
                         .iter()
-                        .map(|a| self.pretty(a))
+                        .map(|a| self.pretty_type(a))
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!("{name}[{args}]")
@@ -418,7 +469,7 @@ impl<'tx> InferCtxt<'tx> {
                 } else {
                     let args = args
                         .iter()
-                        .map(|a| self.pretty(a))
+                        .map(|a| self.pretty_type(a))
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!("{name}[{args}]")
@@ -429,27 +480,41 @@ impl<'tx> InferCtxt<'tx> {
                 let params = def
                     .params
                     .iter()
-                    .map(|p| self.pretty(&self.subst(p.clone(), args)))
+                    .map(|p| {
+                        self.pretty_type(&self.subst(p.clone(), args))
+                    })
                     .collect::<Vec<_>>()
                     .join(", ");
-                let ret = self.pretty(&def.ret);
-                let effects = self.pretty_effects(&eff);
+                let ret = self.pretty_type(&def.ret);
+                let effects = self.pretty_effect_row(&eff);
                 format!("fun({params}): {effects} -> {ret}")
             }
             Typ::FunRef(ret, params, eff) => {
                 let params = params
                     .iter()
-                    .map(|p| self.pretty(p))
+                    .map(|p| self.pretty_type(p))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let ret = self.pretty(ret);
-                let effects = self.pretty_effects(&eff);
+                let ret = self.pretty_type(ret);
+                let effects = self.pretty_effect_row(&eff);
                 format!("fun({params}): {effects} -> {ret}")
             }
             Typ::Meta(meta) => match meta {
-                Meta::Module(_) => "Meta(Module)".to_string(),
-                Meta::Struct(_) => "Meta(Struct)".to_string(),
-                Meta::Enum(_) => "Meta(Enum)".to_string(),
+                Meta::Module(id) => {
+                    format!("Meta(Module({}))", self.tx.get_mod(*id).name)
+                }
+                Meta::Struct(id) => {
+                    format!(
+                        "Meta(Struct({}))",
+                        self.tx.get_struct(*id).name
+                    )
+                }
+                Meta::Enum(id) => {
+                    format!("Meta(Enum({}))", self.tx.get_enum(*id).name)
+                }
+                Meta::Effect(id) => {
+                    format!("Meta(Effect({}))", self.tx.get_eff(*id).name)
+                }
                 Meta::Variant(_, _) => "Meta(Variant)".to_string(),
             },
             Typ::Error => "Error".to_string(),
