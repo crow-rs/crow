@@ -1,14 +1,14 @@
-use crow_ir::{MirBasicBlock, MirBinOp, MirBody, MirConstant, MirOperand, MirPlace, MirProjection, MirRvalue, MirStatement, MirTerminator, MirType, MirUnOp};
-use inkwell::{FloatPredicate, IntPredicate, types::BasicTypeEnum, values::{BasicValueEnum, FunctionValue, PointerValue}};
+use crow_ir::{MirBasicBlock, MirBinOp, MirBody, MirConstant, MirOperand, MirPlace, MirProjection, MirRvalue, MirStatement, MirTerminator, MirTyCtx, MirType, MirUnOp};
+use inkwell::{types::{BasicType, BasicTypeEnum}, values::{BasicValueEnum, PointerValue}};
 
-use crate::Codegen;
+use crate::{Codegen, primitive_builder::build_llvm_binop};
 
 pub (crate) struct FnEmitCtx<'a, 'ctx> {
     pub cg: &'a mut Codegen<'ctx>,
-    pub fn_val: FunctionValue<'ctx>,
     pub locals: &'a [PointerValue<'ctx>],
     pub llvm_blocks: &'a [inkwell::basic_block::BasicBlock<'ctx>],
     pub body: &'a MirBody,
+    pub tcx: MirTyCtx<'a>,
 }
 
 impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
@@ -40,7 +40,8 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
             MirRvalue::BinOp(op, lhs, rhs) => {
                 let l = self.emit_operand(lhs);
                 let r = self.emit_operand(rhs);
-                self.emit_binop(*op, l, r)
+
+                self.emit_binop(*op, l, r, lhs)
             }
 
             MirRvalue::UnOp(op, val) => {
@@ -160,48 +161,10 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
         op: MirBinOp,
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
+        operand: &MirOperand,
     ) -> BasicValueEnum<'ctx> {
-        if lhs.is_int_value() {
-            let l = lhs.into_int_value();
-            let r = rhs.into_int_value();
-            let result = match op {
-                MirBinOp::Add => self.cg.builder.build_int_add(l, r, "add"),
-                MirBinOp::Sub => self.cg.builder.build_int_sub(l, r, "sub"),
-                MirBinOp::Mul => self.cg.builder.build_int_mul(l, r, "mul"),
-                MirBinOp::Div => self.cg.builder.build_int_signed_div(l, r, "div"),
-                MirBinOp::Rem => self.cg.builder.build_int_signed_rem(l, r, "rem"),
-                MirBinOp::BitAnd | MirBinOp::And => self.cg.builder.build_and(l, r, "and"),
-                MirBinOp::BitOr | MirBinOp::Or => self.cg.builder.build_or(l, r, "or"),
-                MirBinOp::BitXor => self.cg.builder.build_xor(l, r, "xor"),
-                MirBinOp::Shl => self.cg.builder.build_left_shift(l, r, "shl"),
-                MirBinOp::Shr => self.cg.builder.build_right_shift(l, r, true, "shr"),
-                MirBinOp::Eq => self.cg.builder.build_int_compare(IntPredicate::EQ, l, r, "eq"),
-                MirBinOp::Ne => self.cg.builder.build_int_compare(IntPredicate::NE, l, r, "ne"),
-                MirBinOp::Lt => self.cg.builder.build_int_compare(IntPredicate::SLT, l, r, "lt"),
-                MirBinOp::Le => self.cg.builder.build_int_compare(IntPredicate::SLE, l, r, "le"),
-                MirBinOp::Gt => self.cg.builder.build_int_compare(IntPredicate::SGT, l, r, "gt"),
-                MirBinOp::Ge => self.cg.builder.build_int_compare(IntPredicate::SGE, l, r, "ge"),
-            };
-            return result.unwrap().into();
-        }
-
-        let l = lhs.into_float_value();
-        let r = rhs.into_float_value();
-        let result = match op {
-            MirBinOp::Add => self.cg.builder.build_float_add(l, r, "fadd").unwrap().into(),
-            MirBinOp::Sub => self.cg.builder.build_float_sub(l, r, "fsub").unwrap().into(),
-            MirBinOp::Mul => self.cg.builder.build_float_mul(l, r, "fmul").unwrap().into(),
-            MirBinOp::Div => self.cg.builder.build_float_div(l, r, "fdiv").unwrap().into(),
-            MirBinOp::Rem => self.cg.builder.build_float_rem(l, r, "frem").unwrap().into(),
-            MirBinOp::Eq => self.cg.builder.build_float_compare(FloatPredicate::OEQ, l, r, "feq").unwrap().into(),
-            MirBinOp::Ne => self.cg.builder.build_float_compare(FloatPredicate::ONE, l, r, "fne").unwrap().into(),
-            MirBinOp::Lt => self.cg.builder.build_float_compare(FloatPredicate::OLT, l, r, "flt").unwrap().into(),
-            MirBinOp::Le => self.cg.builder.build_float_compare(FloatPredicate::OLE, l, r, "fle").unwrap().into(),
-            MirBinOp::Gt => self.cg.builder.build_float_compare(FloatPredicate::OGT, l, r, "fgt").unwrap().into(),
-            MirBinOp::Ge => self.cg.builder.build_float_compare(FloatPredicate::OGE, l, r, "fge").unwrap().into(),
-            _ => unreachable!("bitwise ops on floats"),
-        };
-        result
+        let ty = operand.ty(&self.body.locals, &self.tcx);
+        build_llvm_binop(&self.cg.builder, lhs, rhs, &op, &ty)
     }
 
     fn emit_unop(
@@ -240,6 +203,7 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
                 }
                 agg.into()
             }
+
             _ => {
                 // TODO: variant, array, closure
                 self.cg.ctx.i8_type().const_zero().into()
@@ -270,6 +234,47 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
         }
     }
 
+    fn resolve_callee(
+        &mut self,
+        func: &MirOperand,
+        arg_vals: &[BasicValueEnum<'ctx>],
+    ) -> (PointerValue<'ctx>, inkwell::types::FunctionType<'ctx>) {
+        match func {
+            MirOperand::Constant(MirConstant::FunRef(id)) => {
+                let func_val = self.cg.functions[id];
+                let fn_ty = func_val.get_type();
+                let ptr = func_val.as_global_value().as_pointer_value();
+                (ptr, fn_ty)
+            }
+
+            MirOperand::Copy(place) => {
+                let mir_ty = place.ty(&self.body.locals, &self.tcx);
+                let ptr = self.emit_place_ptr(place);
+
+                let fn_ty = match &mir_ty {
+                    MirType::FunPtr { params, ret } => {
+                        let param_tys: Vec<inkwell::types::BasicMetadataTypeEnum> = params
+                            .iter()
+                            .map(|t| self.cg.llvm_type(t).into())
+                            .collect();
+                        let ret_ty = self.cg.llvm_type(ret);
+                        ret_ty.fn_type(&param_tys, false)
+                    }
+                    _ => panic!("Call on non-function type: {:?}", mir_ty),
+                };
+
+                let loaded = self.cg.builder
+                    .build_load(self.cg.ctx.ptr_type(Default::default()), ptr, "fptr")
+                    .unwrap()
+                    .into_pointer_value();
+
+                (loaded, fn_ty)
+            }
+
+            _ => panic!("Call with non-callable operand"),
+        }
+    }
+
     fn emit_terminator(&mut self, term: &MirTerminator) {
         match term {
             MirTerminator::Goto(target) => {
@@ -293,20 +298,20 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
             }
 
             MirTerminator::Call { dest, func, args, target } => {
-                let callee = self.emit_operand(func).into_pointer_value();
                 let arg_vals: Vec<_> = args
                     .iter()
                     .map(|a| self.emit_operand(a).into())
                     .collect();
 
-                // Recover function type for indirect call
-                let fn_ty = self.cg.ctx.i64_type().fn_type(
-                    &arg_vals.iter().map(|_| self.cg.ctx.i64_type().into()).collect::<Vec<_>>(),
-                    false,
-                );
+                let (callee_ptr, fn_ty) = self.resolve_callee(func, &arg_vals);
+
+                let arg_vals: Vec<inkwell::values::BasicMetadataValueEnum> = args
+                    .iter()
+                    .map(|a| self.emit_operand(a).into())
+                    .collect();
 
                 let ret = self.cg.builder
-                    .build_indirect_call(fn_ty, callee, &arg_vals, "call")
+                    .build_indirect_call(fn_ty, callee_ptr, &arg_vals, "call")
                     .unwrap()
                     .try_as_basic_value()
                     .left();

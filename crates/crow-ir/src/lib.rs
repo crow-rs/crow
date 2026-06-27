@@ -236,3 +236,115 @@ pub struct MirModule {
 
     pub entry: MirFunctionId,
 }
+
+pub struct MirTyCtx<'a> {
+    pub structs: &'a [MirStructDef],
+    pub enums: &'a [MirEnumDef],
+    pub functions: &'a [MirFunction],
+}
+
+impl MirModule {
+    pub fn ty_ctx(&self) -> MirTyCtx<'_> {
+        MirTyCtx {
+            structs: &self.structs,
+            enums: &self.enums,
+            functions: &self.functions,
+        }
+    }
+}
+
+impl MirConstant {
+    pub fn ty(&self, tcx: &MirTyCtx<'_>) -> MirType {
+        match self {
+            MirConstant::Int(_) => MirType::Int,
+            MirConstant::Float(_) => MirType::Float,
+            MirConstant::Bool(_) => MirType::Bool,
+            MirConstant::Str(_) => MirType::Str,
+            MirConstant::Unit => MirType::Unit,
+            MirConstant::FunRef(id) => {
+                let func = &tcx.functions[*id as usize];
+                MirType::FunPtr {
+                    params: func.params.clone(),
+                    ret: Box::new(func.ret.clone()),
+                }
+            }
+        }
+    }
+}
+
+impl MirOperand {
+    pub fn ty(&self, locals: &[MirLocal], tcx: &MirTyCtx<'_>) -> MirType {
+        match self {
+            MirOperand::Copy(place) => place.ty(locals, tcx),
+            MirOperand::Constant(c) => c.ty(tcx),
+        }
+    }
+}
+
+impl MirPlace {
+    pub fn base_ty(&self, locals: &[MirLocal]) -> MirType {
+        locals[self.local as usize].ty.clone()
+    }
+
+    pub fn ty(&self, locals: &[MirLocal], tcx: &MirTyCtx<'_>) -> MirType {
+        let mut ty = self.base_ty(locals);
+        let mut active_variant: Option<usize> = None;
+
+        for proj in &self.projection {
+            match proj {
+                MirProjection::Field(idx) => {
+                    ty = match &ty {
+                        MirType::Struct(sid) => {
+                            let def = &tcx.structs[*sid as usize];
+                            def.fields[*idx].ty.clone()
+                        }
+                        MirType::Enum(eid) => {
+                            let vi = active_variant
+                                .expect("Field on Enum without preceding Downcast");
+                            let def = &tcx.enums[*eid as usize];
+                            def.variants[vi].fields[*idx].clone()
+                        }
+                        _ => panic!("Field projection on {:?}", ty),
+                    };
+                    active_variant = None; 
+                }
+
+                MirProjection::Downcast(variant_idx) => {
+                    assert!(
+                        matches!(ty, MirType::Enum(_)),
+                        "Downcast on non-enum {:?}",
+                        ty
+                    );
+                    active_variant = Some(*variant_idx);
+                }
+
+                MirProjection::Index(_) => {
+                    ty = match ty {
+                        MirType::Array(elem) => *elem,
+                        _ => panic!("Index projection on {:?}", ty),
+                    };
+                }
+            }
+        }
+
+        ty
+    }
+}
+
+impl MirProjection {
+    pub fn project_ty(&self, base: MirType, tcx: &MirTyCtx<'_>) -> MirType {
+        match self {
+            MirProjection::Field(idx) => match &base {
+                MirType::Struct(sid) => {
+                    tcx.structs[*sid as usize].fields[*idx].ty.clone()
+                }
+                _ => panic!("Field on {:?}", base),
+            },
+            MirProjection::Index(_) => match base {
+                MirType::Array(elem) => *elem,
+                _ => panic!("Index on {:?}", base),
+            },
+            MirProjection::Downcast(_) => base, 
+        }
+    }
+}

@@ -1,4 +1,6 @@
-
+struct Kek {
+    a: int
+}
 
 fun sum(a: int, b: int): tot -> int {
     a + b

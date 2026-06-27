@@ -1,7 +1,5 @@
 use crow_ir::{
-    MirEnumDef,
-    MirFunction, MirModule, 
-    MirStructDef, MirType,
+    MirEnumDef, MirFunction, MirModule, MirStructDef, MirTyCtx, MirType,
 };
 use inkwell::{
     builder::Builder,
@@ -17,6 +15,8 @@ use std::collections::HashMap;
 use crate::fn_emit::FnEmitCtx;
 
 mod fn_emit;
+mod enum_emit;
+mod primitive_builder;
 
 pub struct Codegen<'ctx> {
     ctx: &'ctx Context,
@@ -85,7 +85,7 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn emit_function(&mut self, id: u32, f: &MirFunction) {
+    fn emit_function(&mut self, id: u32, f: &MirFunction, tcx: MirTyCtx<'ctx>) {
         let body = match &f.body {
             Some(b) => b,
             None => return, 
@@ -118,10 +118,10 @@ impl<'ctx> Codegen<'ctx> {
 
         let mut ctx = FnEmitCtx {
             cg: self,
-            fn_val,
             locals: &locals,
             llvm_blocks: &llvm_blocks,
             body,
+            tcx
         };
 
         for (i, bb) in body.blocks.iter().enumerate() {
@@ -129,7 +129,7 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    pub fn run(&mut self, module: &MirModule) {
+    pub fn run(&mut self, module: &'ctx MirModule) {
         for (idx, s) in module.structs.iter().enumerate() {
             self.emit_struct(idx as u32, s);
         }
@@ -137,7 +137,7 @@ impl<'ctx> Codegen<'ctx> {
         self.declare_functions(module);
 
         for (idx, f) in module.functions.iter().enumerate() {
-            self.emit_function(idx as u32, f);
+            self.emit_function(idx as u32, f, module.ty_ctx());
         }
     }
 
