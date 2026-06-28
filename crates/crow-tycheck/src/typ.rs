@@ -21,11 +21,19 @@ pub enum Meta {
     Effect(Id<def::Effect>),
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub enum IntBitness {
+    I8,
+    I16,
+    I32,
+    I64
+}
+
 /// Defines a type in the type system
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Typ {
     /// Primitive types
-    Int,
+    Int(IntBitness),
     Float,
     Str,
     Bool,
@@ -48,6 +56,9 @@ pub enum Typ {
 
     /// An guaranteed error type
     Error,
+
+    // infered primitives
+    InferInt(Id<Var>)
 }
 
 /// Defines an effect

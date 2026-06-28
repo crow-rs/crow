@@ -12,11 +12,12 @@ use inkwell::{
 };
 use std::collections::HashMap;
 
-use crate::fn_emit::FnEmitCtx;
+use crate::{fn_emit::FnEmitCtx, types_constructor::construct_type};
 
 mod fn_emit;
 mod enum_emit;
 mod primitive_builder;
+mod types_constructor;
 
 pub struct Codegen<'ctx> {
     ctx: &'ctx Context,
@@ -38,24 +39,6 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn llvm_type(&self, ty: &MirType) -> BasicTypeEnum<'ctx> {
-        match ty {
-            MirType::Int => self.ctx.i64_type().into(),
-            MirType::Float => self.ctx.f64_type().into(),
-            MirType::Bool => self.ctx.bool_type().into(),
-            MirType::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
-            MirType::Unit => self.ctx.i8_type().into(),
-            MirType::Struct(id) => self.struct_types[id].into(),
-            MirType::Enum(_) => {
-                self.ctx.ptr_type(AddressSpace::default()).into()
-            }
-            MirType::Array(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
-            MirType::FunPtr { .. } => self.ctx.ptr_type(AddressSpace::default()).into(),
-            MirType::Closure { .. } => self.ctx.ptr_type(AddressSpace::default()).into(),
-            MirType::Never => self.ctx.i8_type().into(),
-        }
-    }
-
     fn llvm_fn_type(
         &self,
         params: &[MirType],
@@ -63,7 +46,7 @@ impl<'ctx> Codegen<'ctx> {
     ) -> inkwell::types::FunctionType<'ctx> {
         let param_types: Vec<BasicMetadataTypeEnum<'ctx>> = params
             .iter()
-            .map(|p| self.llvm_type(p).into())
+            .map(|p| construct_type(self.ctx, p).into())
             .collect();
 
         match ret {
@@ -71,7 +54,7 @@ impl<'ctx> Codegen<'ctx> {
                 self.ctx.void_type().fn_type(&param_types, false)
             }
             _ => {
-                self.llvm_type(ret).fn_type(&param_types, false)
+                construct_type(self.ctx, ret).fn_type(&param_types, false)
             }
         }
     }
@@ -104,7 +87,7 @@ impl<'ctx> Codegen<'ctx> {
             .iter()
             .enumerate()
             .map(|(i, local)| {
-                let ty = self.llvm_type(&local.ty);
+                let ty = construct_type(self.ctx, &local.ty);
                 let default_name = format!("_{}", i);
                 let name = local.name.as_deref().unwrap_or(&default_name);
                 self.builder.build_alloca(ty, name).unwrap()
@@ -145,7 +128,7 @@ impl<'ctx> Codegen<'ctx> {
         let field_types: Vec<BasicTypeEnum<'ctx>> = s
             .fields
             .iter()
-            .map(|f| self.llvm_type(&f.ty))
+            .map(|f| construct_type(self.ctx, &f.ty))
             .collect();
 
         let struct_type = self.ctx.struct_type(&field_types, false);

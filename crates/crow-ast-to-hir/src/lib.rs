@@ -6,14 +6,11 @@ use crow_ast::{
     stmt::{Stmt, StmtKind},
 };
 use crow_tycheck::{
-    ctxt::typ::TypesCtxt,
-    def::{Def, DefKind},
-    hir::{
+    ctxt::typ::TypesCtxt, def::{Def, DefKind}, hir::{
         HirCase, HirConst, HirEnum, HirExpr, HirExprKind, HirFunction,
         HirLit, HirModule, HirNativeFun, HirPat, HirStmt, HirStruct,
         HirVariant,
-    },
-    typ::{EffectRow, Typ, Var},
+    }, typ::{EffectRow, IntBitness, Typ, Var},
 };
 use std::collections::HashMap;
 
@@ -375,7 +372,7 @@ impl<'tx> TirBuilder<'tx> {
     fn lower_lit(&self, lit: &Lit) -> HirExpr {
         match lit {
             Lit::Int(s) => HirExpr {
-                ty: Typ::Int,
+                ty: Typ::Int(IntBitness::I64), // todo bitness parser
                 kind: HirExprKind::Lit(HirLit::Int(
                     s.parse::<i64>().unwrap_or(0),
                 )),
@@ -636,11 +633,12 @@ impl<'tx> TirBuilder<'tx> {
         }
     }
 
+    //todo - type hint resolver in tres & separate them to some container
     fn lower_type_hint(&self, hint: &crow_ast::atom::TypeHint) -> Typ {
         use crow_ast::atom::TypeHint;
         match hint {
             TypeHint::Local { name, .. } => match name.as_str() {
-                "int" => Typ::Int,
+                "int" => Typ::Int(IntBitness::I64),
                 "float" => Typ::Float,
                 "bool" => Typ::Bool,
                 "str" => Typ::Str,

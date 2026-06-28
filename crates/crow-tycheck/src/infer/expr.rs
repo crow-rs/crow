@@ -1,9 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::infer::InferCtxt,
-    def::{DefKind, Enum, Function, Module, Struct, Variant},
-    errors::TypeckError,
-    typ::{EffectRow, Meta, Typ},
+    ctxt::infer::InferCtxt, def::{DefKind, Enum, Function, Module, Struct, Variant}, errors::TypeckError, typ::{EffectRow, IntBitness, Meta, Typ},
 };
 use crow_ast::{
     atom::{BinOp, Lit, Param, Publicity, UnOp},
@@ -18,7 +15,7 @@ impl<'tx> InferCtxt<'tx> {
     /// Infers literal
     fn infer_lit(&mut self, lit: &Lit) -> Typ {
         match lit {
-            Lit::Int(_) => Typ::Int,
+            Lit::Int(_) => Typ::InferInt(self.fresh()), // todo - parse prefixes to resolve bitness
             Lit::Float(_) => Typ::Float,
             Lit::String(_) => Typ::Str,
             Lit::Bool(_) => Typ::Bool,
@@ -36,7 +33,8 @@ impl<'tx> InferCtxt<'tx> {
         let typ = self.infer_expr(expr);
         match (un_op, typ) {
             // Number neg operator
-            (UnOp::Neg, Typ::Int) => Typ::Int,
+            (UnOp::Neg, Typ::Int(donor)) => Typ::Int(donor),
+            (UnOp::Neg, Typ::InferInt(id)) => Typ::InferInt(id),
             (UnOp::Neg, Typ::Float) => Typ::Float,
             // Bool bang operator
             (UnOp::Bang, Typ::Bool) => Typ::Bool,
@@ -66,21 +64,44 @@ impl<'tx> InferCtxt<'tx> {
         let lhs = self.infer_expr(lhs);
         let rhs = self.infer_expr(rhs);
 
-        match (bin_op, lhs, rhs) {
-            // Int operators
-            (BinOp::Add, Typ::Int, Typ::Int)
-            | (BinOp::Sub, Typ::Int, Typ::Int)
-            | (BinOp::Mul, Typ::Int, Typ::Int)
-            | (BinOp::Div, Typ::Int, Typ::Int)
-            | (BinOp::Rem, Typ::Int, Typ::Int)
-            | (BinOp::Xor, Typ::Int, Typ::Int) => Typ::Int,
+        match (bin_op, &lhs, &rhs) {
+            (BinOp::Add, Typ::InferInt(a), Typ::InferInt(b))
+            | (BinOp::Sub, Typ::InferInt(a), Typ::InferInt(b))
+            | (BinOp::Mul, Typ::InferInt(a), Typ::InferInt(b))
+            | (BinOp::Div, Typ::InferInt(a), Typ::InferInt(b))
+            | (BinOp::Rem, Typ::InferInt(a), Typ::InferInt(b))
+            | (BinOp::Xor, Typ::InferInt(a), Typ::InferInt(b)) => {
+                self.unify(Typ::InferInt(a.clone()), Typ::InferInt(b.clone())).ok();
+                Typ::InferInt(a.clone())
+            }
+
+            (BinOp::Add, Typ::Int(a), Typ::Int(b))
+            | (BinOp::Sub, Typ::Int(a), Typ::Int(b))
+            | (BinOp::Mul, Typ::Int(a), Typ::Int(b))
+            | (BinOp::Div, Typ::Int(a), Typ::Int(b))
+            | (BinOp::Rem, Typ::Int(a), Typ::Int(b))
+            | (BinOp::Xor, Typ::Int(a), Typ::Int(b)) => {
+                if a != b {
+                    emit!(
+                        self,
+                        TypeckError::TypesMissmatch { 
+                            src: span.0, 
+                            span: span.1.into(), 
+                            expected: self.pretty_type(&lhs.clone()), 
+                            got: self.pretty_type(&rhs)
+                        } 
+                    );
+                }
+                Typ::Int(a.clone())
+            }
+
             // Float operators
             (BinOp::Add, Typ::Float, Typ::Float)
             | (BinOp::Sub, Typ::Float, Typ::Float)
             | (BinOp::Mul, Typ::Float, Typ::Float)
             | (BinOp::Div, Typ::Float, Typ::Float)
             | (BinOp::Rem, Typ::Float, Typ::Float)
-            | (BinOp::Xor, Typ::Float, Typ::Float) => Typ::Int,
+            | (BinOp::Xor, Typ::Float, Typ::Float) => Typ::Float,
             // Logical operators
             (BinOp::And, Typ::Bool, Typ::Bool)
             | (BinOp::Or, Typ::Bool, Typ::Bool)
@@ -88,19 +109,19 @@ impl<'tx> InferCtxt<'tx> {
             | (BinOp::BitOr, Typ::Bool, Typ::Bool)
             | (BinOp::Xor, Typ::Bool, Typ::Bool) => Typ::Bool,
             // Comparison operators
-            (BinOp::Gt, Typ::Int, Typ::Int)
-            | (BinOp::Gt, Typ::Int, Typ::Float)
-            | (BinOp::Ge, Typ::Int, Typ::Int)
-            | (BinOp::Ge, Typ::Int, Typ::Float)
-            | (BinOp::Lt, Typ::Int, Typ::Int)
-            | (BinOp::Lt, Typ::Int, Typ::Float)
-            | (BinOp::Le, Typ::Int, Typ::Int)
-            | (BinOp::Le, Typ::Int, Typ::Float) => Typ::Bool,
+            (BinOp::Gt, Typ::Int(_), Typ::Int(_))
+            | (BinOp::Gt, Typ::Int(_), Typ::Float)
+            | (BinOp::Ge, Typ::Int(_), Typ::Int(_))
+            | (BinOp::Ge, Typ::Int(_), Typ::Float)
+            | (BinOp::Lt, Typ::Int(_), Typ::Int(_))
+            | (BinOp::Lt, Typ::Int(_), Typ::Float)
+            | (BinOp::Le, Typ::Int(_), Typ::Int(_))
+            | (BinOp::Le, Typ::Int(_), Typ::Float) => Typ::Bool,
             // Concat operator
             (BinOp::Concat, Typ::Str, Typ::Str) => Typ::Str,
             // Equality operators
             (BinOp::Eq, a, b) | (BinOp::Ne, a, b) => {
-                self.eq(&span, a, b);
+                self.eq(&span, a.clone(), b.clone());
                 Typ::Bool
             }
             // Other
@@ -776,7 +797,7 @@ impl<'tx> InferCtxt<'tx> {
         match (what, &pat.kind) {
             // Skipping literals
             (Typ::Bool, PatKind::Lit(Lit::Bool(_)))
-            | (Typ::Int, PatKind::Lit(Lit::Int(_)))
+            | (Typ::Int(_), PatKind::Lit(Lit::Int(_)))
             | (Typ::Float, PatKind::Lit(Lit::Float(_)))
             | (Typ::Str, PatKind::Lit(Lit::String(_))) => {}
             // Enum patterns

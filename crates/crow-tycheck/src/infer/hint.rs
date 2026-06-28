@@ -1,9 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::infer::InferCtxt,
-    def::{DefKind, Enum, Struct},
-    errors::TypeckError,
-    typ::{Effect, EffectRow, Typ},
+    ctxt::infer::InferCtxt, def::{DefKind, Enum, Struct}, errors::TypeckError, typ::{Effect, EffectRow, IntBitness, Typ},
 };
 use crow_ast::atom::{EffectHint, Effects, Publicity, TypeHint};
 use crow_lex::token::Span;
@@ -100,6 +97,21 @@ impl<'tx> InferCtxt<'tx> {
         EffectRow { known, tail: None }
     }
 
+    fn infer_int_type(
+        &mut self, 
+        span: &Span,
+        name: &str,
+        args: &[TypeHint]) -> Option<Typ> {
+
+        match name {
+            "i8" => Some(self.ensure_no_generics(span, args.len(), || Typ::Int(IntBitness::I8))),
+            "i16" => Some(self.ensure_no_generics(span, args.len(), || Typ::Int(IntBitness::I16))),
+            "i32" => Some(self.ensure_no_generics(span, args.len(), || Typ::Int(IntBitness::I32))),
+            "i64" => Some(self.ensure_no_generics(span, args.len(), || Typ::Int(IntBitness::I64))),
+            _ => None
+        }
+    }
+
     /// Infers local type hint
     fn infer_local_type_hint(
         &mut self,
@@ -107,11 +119,11 @@ impl<'tx> InferCtxt<'tx> {
         name: &str,
         args: &[TypeHint],
     ) -> Typ {
+        if let Some(ty) = self.infer_int_type(span, name, args) {
+            return ty
+        }
+
         match name {
-            // Primitive types
-            "int" => {
-                self.ensure_no_generics(span, args.len(), || Typ::Int)
-            }
             "float" => {
                 self.ensure_no_generics(span, args.len(), || Typ::Float)
             }

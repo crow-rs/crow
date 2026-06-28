@@ -64,6 +64,11 @@ impl<'tx> InferCtxt<'tx> {
             .declare_mod_def(&c.name, (p, DefKind::Const(value)));
     }
 
+    //todo: need type finalize for expr like 'let a = 2 + 2' -> fallback to i64
+    fn finalize_types(&mut self, module: &Module) {
+
+    }
+
     /// Performs late analysis of module
     pub fn late_pass(&mut self, module: &Module) {
         // Iterating over module items

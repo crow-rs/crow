@@ -22,6 +22,7 @@ impl<'s> Parser<'s> {
 
         // Parsing hint
         let hint = if self.check(TokenKind::Colon) {
+            self.bump();
             self.type_hint()
         } else {
             TypeHint::Infer

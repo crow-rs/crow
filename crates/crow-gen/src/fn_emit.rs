@@ -1,7 +1,7 @@
-use crow_ir::{MirBasicBlock, MirBinOp, MirBody, MirConstant, MirOperand, MirPlace, MirProjection, MirRvalue, MirStatement, MirTerminator, MirTyCtx, MirType, MirUnOp};
+use crow_ir::{MirBasicBlock, MirBinOp, MirBody, MirConstant, MirIntBitness, MirOperand, MirPlace, MirProjection, MirRvalue, MirStatement, MirTerminator, MirTyCtx, MirType, MirUnOp};
 use inkwell::{types::{BasicType, BasicTypeEnum}, values::{BasicValueEnum, PointerValue}};
 
-use crate::{Codegen, primitive_builder::build_llvm_binop};
+use crate::{Codegen, primitive_builder::build_llvm_binop, types_constructor::construct_type};
 
 pub (crate) struct FnEmitCtx<'a, 'ctx> {
     pub cg: &'a mut Codegen<'ctx>,
@@ -91,7 +91,9 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
 
     fn emit_constant(&self, c: &MirConstant) -> BasicValueEnum<'ctx> {
         match c {
-            MirConstant::Int(v) => self.cg.ctx.i64_type().const_int(*v as u64, true).into(),
+            MirConstant::Int(v, bitness) => {
+                construct_type(self.cg.ctx, &MirType::Int(bitness.clone())).into_int_type().const_int(*v as u64, true).into()
+            },
             MirConstant::Float(v) => self.cg.ctx.f64_type().const_float(*v).into(),
             MirConstant::Bool(v) => self.cg.ctx.bool_type().const_int(*v as u64, false).into(),
             MirConstant::Str(s) => {
@@ -153,7 +155,7 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
     }
 
     fn local_llvm_type(&self, local_id: u32) -> BasicTypeEnum<'ctx> {
-        self.cg.llvm_type(&self.body.locals[local_id as usize].ty)
+        construct_type(self.cg.ctx, &self.body.locals[local_id as usize].ty)
     }
 
     fn emit_binop(
@@ -216,8 +218,9 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
         val: BasicValueEnum<'ctx>,
         target: &MirType,
     ) -> BasicValueEnum<'ctx> {
-        let target_ty = self.cg.llvm_type(target);
-        match target {
+        //let target_ty = self.cg.llvm_type(target);
+        todo!("todo cast");
+        /*match target {
             MirType::Float if val.is_int_value() => {
                 self.cg.builder
                     .build_signed_int_to_float(val.into_int_value(), target_ty.into_float_type(), "itof")
@@ -231,7 +234,7 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
                     .into()
             }
             _ => val, // identity / pointer cast
-        }
+        }*/
     }
 
     fn resolve_callee(
@@ -255,9 +258,9 @@ impl<'a, 'ctx> FnEmitCtx<'a, 'ctx> {
                     MirType::FunPtr { params, ret } => {
                         let param_tys: Vec<inkwell::types::BasicMetadataTypeEnum> = params
                             .iter()
-                            .map(|t| self.cg.llvm_type(t).into())
+                            .map(|t| construct_type(self.cg.ctx,t).into())
                             .collect();
-                        let ret_ty = self.cg.llvm_type(ret);
+                        let ret_ty = construct_type(self.cg.ctx, ret);
                         ret_ty.fn_type(&param_tys, false)
                     }
                     _ => panic!("Call on non-function type: {:?}", mir_ty),

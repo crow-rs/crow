@@ -1,8 +1,7 @@
 use crow_ast::atom::{BinOp, UnOp};
 use crow_ir::*;
 use crow_tycheck::{
-    hir::*,
-    typ::Typ,
+    hir::*, typ::{IntBitness, Typ},
 };
 use std::collections::HashMap;
 
@@ -122,10 +121,19 @@ impl LowerCtxt {
         }
     }
 
+    fn translate_int_type(&self, ty_bitn: &IntBitness) -> MirIntBitness {
+        match ty_bitn {
+            IntBitness::I8 => MirIntBitness::Bit8,
+            IntBitness::I16 => MirIntBitness::Bit16,
+            IntBitness::I32 => MirIntBitness::Bit32,
+            IntBitness::I64 => MirIntBitness::Bit64
+        }
+    }
 
+    //DO NOT IGNORE MACHINE BITNESS
     fn lower_typ(&self, ty: &Typ) -> MirType {
         match ty {
-            Typ::Int => MirType::Int,
+            Typ::Int(bitness) => MirType::Int(self.translate_int_type(bitness)),
             Typ::Float => MirType::Float,
             Typ::Bool => MirType::Bool,
             Typ::Str => MirType::Str,
@@ -133,14 +141,15 @@ impl LowerCtxt {
             Typ::Error => MirType::Never,
             Typ::Struct(_, _) => MirType::Struct(0), // TODO: id mapping
             Typ::Enum(_, _) => MirType::Enum(0),     // TODO: id mapping
-            Typ::Fun(_, _, _) | Typ::FunRef(_, _, _) => {
+            /*Typ::Fun(def, _, _)  => {
                 // Function values are pointers
                 MirType::FunPtr {
-                    params: vec![], // TODO
+                    params: def
                     ret: Box::new(MirType::Int),
                 }
-            }
-            _ => MirType::Int, // Var, Generic — fallback
+            }*/
+            //| Typ::FunRef(_, _, _)
+            _ => panic!("Invalid machine type provided!")
         }
     }
 
@@ -279,10 +288,10 @@ impl<'a> FnBuilder<'a> {
         }
     }
 
-
+    //todo - literal must have type allready
     fn lower_lit(&mut self, lit: &HirLit) -> MirLocalId {
         let (ty, constant) = match lit {
-            HirLit::Int(v) => (MirType::Int, MirConstant::Int(*v)),
+            HirLit::Int(v) => (MirType::Int(MirIntBitness::Bit64), MirConstant::Int(*v, MirIntBitness::Bit64)), // todo - HIR MUST HAVE ALLREADY TYPES
             HirLit::Float(v) => (MirType::Float, MirConstant::Float(*v)),
             HirLit::Bool(v) => (MirType::Bool, MirConstant::Bool(*v)),
             HirLit::Str(s) => (MirType::Str, MirConstant::Str(s.clone())),
@@ -609,7 +618,7 @@ impl<'a> FnBuilder<'a> {
         // Get discriminant (for enums); for ints/bools, use value directly
         let discr = match &scrutinees[0].ty {
             Typ::Enum(_, _) => {
-                let d = self.temp(MirType::Int);
+                let d = self.temp(MirType::Int(MirIntBitness::Bit64)); //TODO
                 self.emit_assign(
                     MirPlace::local(d),
                     MirRvalue::Discriminant(MirPlace::local(scrut)),
@@ -696,7 +705,7 @@ impl<'a> FnBuilder<'a> {
             HirPat::Unpack(_enum_id, variant_idx, sub_pats) => {
                 for (i, sub) in sub_pats.iter().enumerate() {
                     // Read field i from variant
-                    let field_tmp = self.temp(MirType::Int); // TODO: actual field type
+                    let field_tmp = self.temp(MirType::Int(MirIntBitness::Bit64)); // TODO: actual field type
                     self.emit_assign(
                         MirPlace::local(field_tmp),
                         MirRvalue::Use(MirOperand::Copy(MirPlace {

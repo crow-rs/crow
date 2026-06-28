@@ -14,7 +14,7 @@ impl<'s> Parser<'s> {
                 TokenKind::Comma,
                 |p| p.type_hint(),
             )
-        } else {
+        } else  {
             Vec::new()
         }
     }
@@ -80,7 +80,6 @@ impl<'s> Parser<'s> {
         else {
             let args = self.generic_args();
             let end_span = self.prev().span.clone();
-
             TypeHint::Local {
                 span: start_span + end_span,
                 name: id,

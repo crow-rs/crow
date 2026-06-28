@@ -1,8 +1,6 @@
 /// Imports
 use crate::{
-    ctxt::infer::InferCtxt,
-    errors::TypeckError,
-    typ::{Effect, EffectRow, Meta, Typ, Var},
+    ctxt::infer::InferCtxt, errors::TypeckError, typ::{Effect, EffectRow, IntBitness, Meta, Typ, Var},
 };
 use crow_lex::token::Span;
 use crow_macros::emit;
@@ -89,6 +87,10 @@ impl<'tx> InferCtxt<'tx> {
             }
             Typ::Var(id) => match self.tx.get_var(id) {
                 Var::Unbound => Typ::Var(id),
+                Var::Bound(typ) => self.apply(typ.clone()),
+            },
+            Typ::InferInt(id) => match self.tx.get_var(id) {
+                Var::Unbound => Typ::InferInt(id), 
                 Var::Bound(typ) => self.apply(typ.clone()),
             },
             other => other,
@@ -250,14 +252,37 @@ impl<'tx> InferCtxt<'tx> {
     }
 
     /// Performs types unification
-    fn unify(&mut self, a: Typ, b: Typ) -> Result<(), UnifyError> {
+    pub fn unify(&mut self, a: Typ, b: Typ) -> Result<(), UnifyError> {
         match (a, b) {
+            (Typ::InferInt(v), other) | (other, Typ::InferInt(v)) => {
+                match self.tx.get_var(v) {
+                    Var::Bound(typ) => self.unify(typ.clone(), other),
+                    Var::Unbound => match &other {
+                        Typ::Int(_) | Typ::InferInt(_) => {
+                            self.bind(v, other);
+                            Ok(())
+                        }
+                        Typ::Var(_) => {
+                            self.unify(Typ::Var(v), other)
+                        }
+                        _ => Err(UnifyError::Mismatch),
+                    },
+                }
+            }
+
             // Skipping error types
             (Typ::Error, _) | (_, Typ::Error) => Ok(()),
 
-            // Skipping primitive types
-            (Typ::Int, Typ::Int)
-            | (Typ::Float, Typ::Float)
+            // we need to check bitness
+            (Typ::Int(lhs_bitness), Typ::Int(rhs_bitness)) => {
+                if lhs_bitness == rhs_bitness {
+                    return Ok(())
+                }
+                Err(UnifyError::Mismatch)
+            }
+
+
+            (Typ::Float, Typ::Float)
             | (Typ::Bool, Typ::Bool)
             | (Typ::Str, Typ::Str)
             | (Typ::Unit, Typ::Unit) => Ok(()),
@@ -394,6 +419,13 @@ impl<'tx> InferCtxt<'tx> {
                     || self.occurs(id, ret)
                     || eff.tail.map_or(false, |v| v == id)
             }
+            Typ::InferInt(other) => {
+                if *other == id { return true; }
+                match self.tx.get_var(*other) {
+                    Var::Bound(inner) => self.occurs(id, inner),
+                    _ => false,
+                }
+            }
             _ => false,
         }
     }
@@ -439,10 +471,20 @@ impl<'tx> InferCtxt<'tx> {
         }
     }
 
+    fn full_pretty_int_type(&self, bitness: &IntBitness) -> String {
+        match bitness {
+            IntBitness::I8 => "i8".to_string(),
+            IntBitness::I16 => "i16".to_string(),
+            IntBitness::I32 => "i32".to_string(),
+            IntBitness::I64 => "i64".to_string()
+        }
+    }
+
     /// Returns human-readable type representation
     pub fn pretty_type(&self, ty: &Typ) -> String {
         match ty {
-            Typ::Int => "int".to_string(),
+            Typ::InferInt(_) => "i?".to_string(),
+            Typ::Int(bitness) => self.full_pretty_int_type(bitness),
             Typ::Float => "float".to_string(),
             Typ::Bool => "bool".to_string(),
             Typ::Str => "str".to_string(),

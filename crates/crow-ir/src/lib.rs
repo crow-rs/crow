@@ -3,8 +3,16 @@ pub type MirLocalId = u32;
 pub type MirBlockId = u32;
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum MirIntBitness {
+    Bit8,
+    Bit16,
+    Bit32,
+    Bit64
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum MirType {
-    Int,
+    Int(MirIntBitness),
     Float,
     Bool,
     Str,
@@ -121,7 +129,7 @@ pub enum MirOperand {
 
 #[derive(Clone, Debug)]
 pub enum MirConstant {
-    Int(i64),
+    Int(i64, MirIntBitness),
     Float(f64),
     Bool(bool),
     Str(String),
@@ -256,7 +264,7 @@ impl MirModule {
 impl MirConstant {
     pub fn ty(&self, tcx: &MirTyCtx<'_>) -> MirType {
         match self {
-            MirConstant::Int(_) => MirType::Int,
+            MirConstant::Int(_, bitness) => MirType::Int(bitness.clone()),
             MirConstant::Float(_) => MirType::Float,
             MirConstant::Bool(_) => MirType::Bool,
             MirConstant::Str(_) => MirType::Str,

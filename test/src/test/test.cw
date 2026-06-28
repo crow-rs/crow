@@ -1,19 +1,12 @@
-struct Kek {
-    a: int
-}
-
-fun sum(a: int, b: int): tot -> int {
+fun meme(a: i8, b: i8) -> i8 {
     a + b
 }
 
-fun main(): tot -> int {
-    let a = sum(10, 20)
+fun main() -> i8 {
+    let a: i8 = meme(1, 2)
 
-    let c = match a {
-        10 -> 0,
-        30 -> 67,
-        _ -> 1337
+    match a {
+        4 -> 1337,
+        _ -> 0
     }
-
-    c
 }

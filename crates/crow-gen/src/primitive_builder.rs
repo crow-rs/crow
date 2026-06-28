@@ -4,7 +4,7 @@ use inkwell::{FloatPredicate, IntPredicate, builder::Builder, values::{BasicValu
 
 fn build_sum<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEnum<'llvm>, rhs: BasicValueEnum<'llvm>) -> BasicValueEnum<'llvm> {
     match _type {
-        MirType::Int => 
+        MirType::Int(_) => 
             builder.build_int_add(lhs.into_int_value(), rhs.into_int_value(), "int_add")
             .unwrap().as_basic_value_enum(),
         MirType::Float => 
@@ -17,7 +17,7 @@ fn build_sum<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEn
 
 fn build_sub<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEnum<'llvm>, rhs: BasicValueEnum<'llvm>) -> BasicValueEnum<'llvm> {
     match _type {
-        MirType::Int => 
+        MirType::Int(_) => 
             builder.build_int_sub(lhs.into_int_value(), rhs.into_int_value(), "int_sub")
             .unwrap().as_basic_value_enum(),
         MirType::Float => 
@@ -29,7 +29,7 @@ fn build_sub<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEn
 
 fn build_div<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEnum<'llvm>, rhs: BasicValueEnum<'llvm>) -> BasicValueEnum<'llvm> {
     match _type {
-        MirType::Int => 
+        MirType::Int(_) => 
             builder.build_int_signed_div(lhs.into_int_value(), rhs.into_int_value(), "int_div")
             .unwrap().as_basic_value_enum(),
         MirType::Float => 
@@ -41,7 +41,7 @@ fn build_div<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEn
 
 fn build_mul<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEnum<'llvm>, rhs: BasicValueEnum<'llvm>) -> BasicValueEnum<'llvm> {
     match _type {
-        MirType::Int => 
+        MirType::Int(_) => 
             builder.build_int_mul(lhs.into_int_value(), rhs.into_int_value(), "int_mul")
             .unwrap().as_basic_value_enum(),
         MirType::Float => 
@@ -53,7 +53,7 @@ fn build_mul<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEn
 
 fn build_gt_compare<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEnum<'llvm>, rhs: BasicValueEnum<'llvm>) -> BasicValueEnum<'llvm> {
     match _type {
-        MirType::Int => builder.build_int_compare(IntPredicate::SGT, lhs.into_int_value(), rhs.into_int_value(), "cmpres").unwrap().as_basic_value_enum(),
+        MirType::Int(_) => builder.build_int_compare(IntPredicate::SGT, lhs.into_int_value(), rhs.into_int_value(), "cmpres").unwrap().as_basic_value_enum(),
         MirType::Float => builder.build_float_compare(FloatPredicate::OGT, lhs.into_float_value(), rhs.into_float_value(), "cmpres").unwrap().as_basic_value_enum(),
         _ => panic!("{:?}", _type)
     }
@@ -61,7 +61,7 @@ fn build_gt_compare<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: Basic
 
 fn build_lt_compare<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEnum<'llvm>, rhs: BasicValueEnum<'llvm>) -> BasicValueEnum<'llvm> {
     match _type {
-        MirType::Int => builder.build_int_compare(IntPredicate::SLT, lhs.into_int_value(), rhs.into_int_value(), "cmpres").unwrap().as_basic_value_enum(),
+        MirType::Int(_) => builder.build_int_compare(IntPredicate::SLT, lhs.into_int_value(), rhs.into_int_value(), "cmpres").unwrap().as_basic_value_enum(),
         MirType::Float => builder.build_float_compare(FloatPredicate::OLT, lhs.into_float_value(), rhs.into_float_value(), "cmpres").unwrap().as_basic_value_enum(),
         _ => panic!("{:?}", _type)
     }
@@ -69,7 +69,7 @@ fn build_lt_compare<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: Basic
 
 fn build_eq_compare<'llvm>(builder: &Builder<'llvm>, _type: &MirType, lhs: BasicValueEnum<'llvm>, rhs: BasicValueEnum<'llvm>) -> BasicValueEnum<'llvm> {
     match _type {
-        MirType::Int | MirType::Bool => builder.build_int_compare(IntPredicate::EQ, lhs.into_int_value(), rhs.into_int_value(), "cmpres").unwrap().as_basic_value_enum(),
+        MirType::Int(_) | MirType::Bool => builder.build_int_compare(IntPredicate::EQ, lhs.into_int_value(), rhs.into_int_value(), "cmpres").unwrap().as_basic_value_enum(),
         MirType::Float => builder.build_float_compare(FloatPredicate::UEQ, lhs.into_float_value(), rhs.into_float_value(), "cmpres").unwrap().as_basic_value_enum(),
         _ => panic!("{:?}", _type)
     }
