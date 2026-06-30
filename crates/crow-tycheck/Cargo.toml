@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-crow-ast = { path = "../crow-ast" }
-crow-macros = { path = "../crow-macros" }
+crow-hir = { path = "../crow-hir" }
+crow-resolving = { path = "../crow-resolving" }
 crow-lex = { path = "../crow-lex" }
-id-arena = "2.3.0"
+crow-ast = { path = "../crow-ast" }
+crow-macros = {path = "../crow-macros"}
+ena = "0.14.4"
 miette = { git = "https://github.com/crow-rs/miette" }
 thiserror = "2.0.18"

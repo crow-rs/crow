@@ -1,15 +1,11 @@
 [workspace]
 members = [
     "crates/crow-ast", 
-    "crates/crow-ast-to-hir",
     "crates/crow-cli",
-    "crates/crow-driver",
-    "crates/crow-gen", "crates/crow-hir-to-mir",
-    "crates/crow-ir",
-    "crates/crow-lex",
+    "crates/crow-driver", "crates/crow-hir",
+    "crates/crow-lex", "crates/crow-lower-hir",
     "crates/crow-macros",
-    "crates/crow-parse",
-    "crates/crow-tycheck"
+    "crates/crow-parse", "crates/crow-resolving", "crates/crow-tycheck",
 ]
 resolver = "3"
 doctest = false

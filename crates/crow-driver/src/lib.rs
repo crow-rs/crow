@@ -6,17 +6,12 @@ mod io;
 use crate::errors::DriverError;
 use camino::Utf8PathBuf;
 use crow_ast::item;
-use crow_ast_to_hir::build_hir;
-use crow_gen::emit;
-use crow_hir_to_mir::lower_to_mir;
-use crow_ir::{
-    MirBasicBlock, MirBody, MirFunction, MirLocal, MirLocalKind,
-    MirModule, MirTerminator, MirType,
-};
 use crow_lex::Lexer;
-use crow_macros::{bail, bug};
+use crow_lower_hir::lower_module;
+use crow_macros::{bail, bug, emit};
 use crow_parse::Parser;
-use crow_tycheck::ctxt::{infer::InferCtxt, typ::TypesCtxt};
+use crow_resolving::resolver::Resolver;
+use crow_tycheck::typeck::typeck_module;
 use miette::NamedSource;
 use petgraph::{Direction, prelude::DiGraphMap};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -46,6 +41,10 @@ impl DriverConfig {
 /// Represents orchestrator of the compilation or analysis
 pub struct Driver {
     config: DriverConfig,
+}
+
+struct IdkWhatIsThis {
+    pub has_error: bool
 }
 
 /// Driver implementation
@@ -220,19 +219,30 @@ impl Driver {
         let sorted = self.perform_toposort(dep_tree);
         info!("performed toposort: {sorted:#?}");
 
-        // Performing typecheck
-        info!("performing typecheck...");
-        let mut types_ctxt = TypesCtxt::new();
+        info!("performing name resolution...");
+
+        let mut resolver = Resolver::new();
+        let mut idk = IdkWhatIsThis {has_error: false};
 
         for name in sorted {
             info!("typechecking `{name}`");
             let module = loaded_modules.get(name).unwrap().clone();
-            let mut ctxt = InferCtxt::new(&mut types_ctxt);
-            ctxt.solve(&module);
-            let defs = ctxt.resolver.export_defs();
-            let hir = build_hir(&types_ctxt, defs, &module);
-            let mir = lower_to_mir(&hir);
-            emit(&mir);
+            let res = resolver.resolve_ast(&module);
+            match res {
+                Ok(_) => {
+                    let hir = lower_module(&module, res.ok().unwrap());
+                    let result = typeck_module(&hir);
+
+                    for err in result.1 {
+                        emit!(idk, err)
+                    }
+                },
+                Err(errors) => {
+                    for err in errors {
+                        emit!(idk, err)
+                    }
+                }
+            }
         }
 
         println!("✨ Done!");

@@ -72,6 +72,12 @@ pub enum TokenKind {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Span(pub Arc<NamedSource<String>>, pub Range<usize>);
 
+impl Span {
+    pub fn zeroed() -> Self {
+        Self(Arc::new(NamedSource::new(String::from("??"), String::from("??"))), Range::default())
+    }
+}
+
 /// Debug implementation
 impl Debug for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

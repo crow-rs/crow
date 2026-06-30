@@ -1,0 +1,10 @@
+[package]
+name = "crow-resolving"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crow-ast = { path = "../crow-ast"}
+crow-lex = { path = "../crow-lex" }
+miette = { git = "https://github.com/crow-rs/miette" }
+thiserror = "2.0.18"

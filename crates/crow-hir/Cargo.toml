@@ -1,0 +1,9 @@
+[package]
+name = "crow-hir"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crow-resolving ={ path = "../crow-resolving"}
+crow-lex ={ path = "../crow-lex"}
+crow-ast ={ path = "../crow-ast"}
