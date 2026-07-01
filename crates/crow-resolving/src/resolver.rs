@@ -1,129 +1,179 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+/// Imports
+use crate::{
+    errors::ResolverErrors,
+    table::{
+        DefId, DefKind, FieldDef, LocalId, Res, ResolveTable, VariantDef,
+    },
+};
 use crow_ast::{
     atom::TypeHint,
     expr::{Case, Expr, ExprKind, Pat, PatKind},
-    item::{Field, Item, ItemKind, Module, Variant},
+    item::{
+        Const, Enum, Field, Fun, ItemKind, Module, NativeFun, Struct,
+        Variant,
+    },
     stmt::{Stmt, StmtKind},
 };
+use crow_fresh::Freshen;
 use crow_lex::token::Span;
+use crow_macros::bug;
 use miette::NamedSource;
-use crate::{errors::ResolverErrors, resolve_ctx::{DefId, DefKind, FieldDef, LocalId, Res, ResolveCtxt, VariantDef}};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
-struct Scope {
-    frames: Vec<HashMap<String, Res>>,
+/// Defines single rib
+type Rib = HashMap<String, Res>;
+
+/// Defines ribs stack
+struct RibsStack {
+    ribs: Vec<Rib>,
 }
 
-impl Scope {
+/// Ribs stack implementation
+impl RibsStack {
+    /// Creates new ribs stack
     fn new() -> Self {
-        Self { frames: vec![HashMap::new()] }
+        Self {
+            ribs: vec![HashMap::new()],
+        }
     }
 
+    /// Pushes new rib onto the stack
     fn push(&mut self) {
-        self.frames.push(HashMap::new());
+        self.ribs.push(HashMap::new());
     }
 
+    /// Pops one rib from the stack
     fn pop(&mut self) {
-        self.frames.pop();
+        self.ribs.pop();
     }
 
+    /// Inserts variable into last rib
     fn insert(&mut self, name: String, res: Res) {
-        self.frames.last_mut().unwrap().insert(name, res);
+        self.ribs
+            .last_mut()
+            .unwrap_or_else(|| bug!("insert with empty ribs stack"))
+            .insert(name, res);
     }
 
+    /// Lookups name in the ribs stack
     fn lookup(&self, name: &str) -> Option<&Res> {
-        for frame in self.frames.iter().rev() {
-            if let Some(res) = frame.get(name) {
+        for rib in self.ribs.iter().rev() {
+            if let Some(res) = rib.get(name) {
                 return Some(res);
             }
         }
         None
     }
 
+    /// Returns current bindings hash set
     fn current_bindings(&self) -> HashSet<String> {
-        self.frames.last().unwrap().keys().cloned().collect()
+        self.ribs
+            .last()
+            .unwrap_or_else(|| {
+                bug!("request for bindings with empty ribs stack")
+            })
+            .keys()
+            .cloned()
+            .collect()
     }
 }
 
+/// All the builtin-types
+const BUILTIN_TYPES: [&'static str; 13] = [
+    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
+    "bool", "string", "unit",
+];
+
+/// Defines a resolver used to resolve
+/// all the top-level items, locals and type hints
 pub struct Resolver {
-    building_ctx: ResolveCtxt,
-    next_def_id: u32,
-    next_local_id: u32,
-    scope: Scope,
-    toplevel: HashMap<String, Res>,
-    errors: Vec<ResolverErrors>
+    /// Resolutions table
+    table: ResolveTable,
+
+    /// Defs freshen
+    freshen_defs: Freshen<u32>,
+
+    /// Locals freshen
+    freshen_locals: Freshen<u32>,
+
+    /// Ribs stack
+    ribs: RibsStack,
+
+    /// Top-level resolutions
+    top_level: HashMap<String, Res>,
+
+    /// Resolver errors
+    errors: Vec<ResolverErrors>,
 }
 
+/// Resolver implementation
 impl Resolver {
+    /// Creates new resolver with registered builtins
     pub fn new() -> Self {
         let mut resolver = Self {
-            building_ctx: ResolveCtxt::default(),
-            next_def_id: 0,
-            next_local_id: 0,
-            scope: Scope::new(),
-            toplevel: HashMap::new(),
+            table: ResolveTable::default(),
+            freshen_defs: Freshen::new(),
+            freshen_locals: Freshen::new(),
+            ribs: RibsStack::new(),
+            top_level: HashMap::new(),
             errors: Vec::new(),
         };
         resolver.register_builtins();
         resolver
     }
 
-    fn register_builtins(&mut self) {
-        let builtins = [
-            "i8", "i16", "i32", "i64",
-            "u8", "u16", "u32", "u64",
-            "f32", "f64",
-            "bool", "string", "unit",
-        ];
-
-        for name in builtins {
-            let def_id = self.alloc_def_id();
-            self.building_ctx.def_kinds.insert(def_id, DefKind::BuiltinType);
-            self.building_ctx.def_names.insert(def_id, name.to_string());
-            self.scope.insert(
+    /// Registers builtin types
+    fn register_builtin_types(&mut self) {
+        for name in BUILTIN_TYPES {
+            let def_id = DefId(self.freshen_defs.fresh());
+            self.table.def_kinds.insert(def_id, DefKind::BuiltinType);
+            self.table.def_names.insert(def_id, name.to_string());
+            self.ribs.insert(
                 name.to_string(),
                 Res::Def(DefKind::BuiltinType, def_id),
             );
         }
     }
 
-    fn alloc_def_id(&mut self) -> DefId {
-        let id = DefId(self.next_def_id);
-        self.next_def_id += 1;
-        id
+    /// Registers builtins
+    fn register_builtins(&mut self) {
+        // Registering builtin types
+        self.register_builtin_types();
     }
 
-    fn alloc_local_id(&mut self) -> LocalId {
-        let id = LocalId(self.next_local_id);
-        self.next_local_id += 1;
-        id
-    }
-
+    /// Defines local in the ribs stack and resolve table
     fn define_local(&mut self, name: &str, span: Span) -> LocalId {
-        let lid = self.alloc_local_id();
-        self.building_ctx.local_spans.insert(lid, span);
-        self.building_ctx.local_names.insert(lid, name.to_string());
-        self.scope.insert(name.to_string(), Res::Local(lid));
+        let lid = LocalId(self.freshen_locals.fresh());
+        self.table.resolutions.insert(span.clone(), Res::Local(lid));
+        self.table.local_spans.insert(lid, span);
+        self.table.local_names.insert(lid, name.to_string());
+        self.ribs.insert(name.to_string(), Res::Local(lid));
         lid
     }
 
-    fn resolve_name(&mut self, name: &str, span: Span, source: Arc<NamedSource<String>>) {
-        
-        let res = self.scope.lookup(name)
-            .cloned()
-            .unwrap_or_else(|| {
-                self.errors.push(ResolverErrors::UndefinedName { 
-                    undef_name: name.to_string(), 
-                    src: source.clone(),
-                    span: span.1.clone().into()
-                });
-                Res::Err
+    /// Resolves local name
+    fn resolve_local(&mut self, name: &str, span: Span) {
+        // Resolving name in ribs stack
+        let res = self.ribs.lookup(name).cloned().unwrap_or_else(|| {
+            self.errors.push(ResolverErrors::UndefinedName {
+                name: name.to_string(),
+                src: span.0.clone(),
+                span: span.1.clone().into(),
             });
-        self.building_ctx.resolutions.insert(span, res);
+            Res::Err
+        });
+
+        // Binding in table
+        self.table.resolutions.insert(span, res);
     }
 
-
+    /// Resolves struct fields
     fn resolve_struct_fields(&mut self, root_id: DefId, fields: &[Field]) {
-        let fields: Vec<FieldDef> = fields.iter()
+        let fields: Vec<FieldDef> = fields
+            .iter()
             .enumerate()
             .map(|(i, f)| FieldDef {
                 name: f.name.clone(),
@@ -131,330 +181,413 @@ impl Resolver {
                 parent: root_id,
             })
             .collect();
-        self.building_ctx.struct_fields.insert(root_id, fields);
+        self.table.struct_fields.insert(root_id, fields);
     }
 
-    fn resolve_enum_variants(&mut self, root_id: DefId, variants: &[Variant]) {
-        let mut variant_defs = Vec::new();
-        for (i, v) in variants.iter().enumerate() {
-            let variant_id = self.alloc_def_id();
-            let def_kind = DefKind::Variant {
-                enum_def: root_id,
-                index: i as u32,
-            };
-            self.building_ctx.def_kinds.insert(variant_id, def_kind);
-            self.building_ctx.def_names.insert(variant_id, v.name.clone());
-            self.building_ctx.def_spans.insert(variant_id, v.span.clone());
+    /// Resolves enum variant
+    fn resolve_enum_variant(
+        &mut self,
+        enum_id: DefId,
+        idx: usize,
+        variant: &Variant,
+    ) -> VariantDef {
+        // Getting fresh def id for variant
+        let variant_id = DefId(self.freshen_defs.fresh());
 
-            self.toplevel.insert(
-                v.name.clone(),
-                Res::Def(DefKind::Variant { enum_def: root_id, index: i as u32 }, variant_id),
-            );
-            self.building_ctx.variant_by_name.insert(
-                (root_id, v.name.clone()),
+        // Preparing def kind
+        let def_kind = DefKind::Variant {
+            enum_def: enum_id,
+            index: idx as u32,
+        };
+
+        // Updating definitions in table
+        self.table.def_kinds.insert(variant_id, def_kind);
+        self.table
+            .def_names
+            .insert(variant_id, variant.name.clone());
+        self.table
+            .def_spans
+            .insert(variant_id, variant.span.clone());
+
+        // Updating top-levels
+        self.top_level.insert(
+            variant.name.clone(),
+            Res::Def(
+                DefKind::Variant {
+                    enum_def: enum_id,
+                    index: idx as u32,
+                },
                 variant_id,
-            );
+            ),
+        );
 
-            variant_defs.push(VariantDef {
-                name: v.name.clone(),
-                index: i as u32,
-                parent: root_id,
-                arity: v.fields.len(),
-            });
+        // Updating variant-by-name in table
+        self.table
+            .variant_by_name
+            .insert((enum_id, variant.name.clone()), variant_id);
+
+        // Preparing variant def
+        VariantDef {
+            name: variant.name.clone(),
+            index: idx as u32,
+            parent: enum_id,
+            arity: variant.fields.len(),
         }
-        self.building_ctx.enum_variants.insert(root_id, variant_defs);
     }
 
-    fn resolve_toplevel(&mut self, module: &Module) {
+    /// Resolves enum variant
+    fn resolve_enum_variants(
+        &mut self,
+        enum_id: DefId,
+        variants: &[Variant],
+    ) {
+        // Resolving variants
+        let mut variant_defs = Vec::new();
+        for (idx, variant) in variants.iter().enumerate() {
+            variant_defs
+                .push(self.resolve_enum_variant(enum_id, idx, variant));
+        }
+
+        // Updating table
+        self.table.enum_variants.insert(enum_id, variant_defs);
+    }
+
+    /// Resolves struct
+    fn resolve_struct(&mut self, span: &Span, s: &Struct) {
+        // Getting fresh def id
+        let def_id = DefId(self.freshen_defs.fresh());
+
+        // Updating table
+        self.table.def_kinds.insert(def_id, DefKind::Struct);
+        self.table.def_spans.insert(def_id, span.clone());
+        self.table.def_names.insert(def_id, s.name.clone());
+
+        // Updating top-level
+        self.top_level
+            .insert(s.name.clone(), Res::Def(DefKind::Struct, def_id));
+
+        // Resolving struct fields
+        self.resolve_struct_fields(def_id, &s.fields);
+    }
+
+    /// Resolves enum
+    fn resolve_enum(&mut self, span: &Span, e: &Enum) {
+        // Getting fresh def id
+        let def_id = DefId(self.freshen_defs.fresh());
+
+        // Updating table
+        self.table.def_kinds.insert(def_id, DefKind::Enum);
+        self.table.def_spans.insert(def_id, span.clone());
+        self.table.def_names.insert(def_id, e.name.clone());
+
+        // Updating top-level
+        self.top_level
+            .insert(e.name.clone(), Res::Def(DefKind::Enum, def_id));
+
+        // Resolving enum variants
+        self.resolve_enum_variants(def_id, &e.variants);
+    }
+
+    /// Resolves function
+    fn resolve_function(&mut self, span: &Span, f: &Fun) {
+        // Getting fresh def id
+        let def_id = DefId(self.freshen_defs.fresh());
+
+        // Updating table
+        self.table.def_kinds.insert(def_id, DefKind::Fun);
+        self.table.def_spans.insert(def_id, span.clone());
+        self.table.def_names.insert(def_id, f.name.clone());
+
+        // Updating top-level
+        self.top_level
+            .insert(f.name.clone(), Res::Def(DefKind::Fun, def_id));
+    }
+
+    /// Resolves native function
+    fn resolve_native_function(&mut self, span: &Span, f: &NativeFun) {
+        // Getting fresh def id
+        let def_id = DefId(self.freshen_defs.fresh());
+
+        // Updating table
+        self.table.def_kinds.insert(def_id, DefKind::NativeFun);
+        self.table.def_spans.insert(def_id, span.clone());
+        self.table.def_names.insert(def_id, f.name.clone());
+
+        // Updating top-level
+        self.top_level
+            .insert(f.name.clone(), Res::Def(DefKind::NativeFun, def_id));
+    }
+
+    /// Resolves constant
+    fn resolve_const(&mut self, span: &Span, c: &Const) {
+        // Getting fresh def id
+        let def_id = DefId(self.freshen_defs.fresh());
+
+        // Updating table
+        self.table.def_kinds.insert(def_id, DefKind::Const);
+        self.table.def_spans.insert(def_id, span.clone());
+        self.table.def_names.insert(def_id, c.name.clone());
+
+        // Updating top-level
+        self.top_level
+            .insert(c.name.clone(), Res::Def(DefKind::Const, def_id));
+    }
+
+    /// Resolves top-level
+    fn resolve_top_level(&mut self, module: &Module) {
+        // Resolving items
         for item in &module.items {
             match &item.kind {
-                ItemKind::Struct(s) => {
-                    let def_id = self.alloc_def_id();
-                    self.building_ctx.def_kinds.insert(def_id, DefKind::Struct);
-                    self.building_ctx.def_spans.insert(def_id, item.span.clone());
-                    self.building_ctx.def_names.insert(def_id, s.name.clone());
-                    self.toplevel.insert(s.name.clone(), Res::Def(DefKind::Struct, def_id));
-                    self.resolve_struct_fields(def_id, &s.fields);
-                }
-                ItemKind::Enum(e) => {
-                    let def_id = self.alloc_def_id();
-                    self.building_ctx.def_kinds.insert(def_id, DefKind::Enum);
-                    self.building_ctx.def_spans.insert(def_id, item.span.clone());
-                    self.building_ctx.def_names.insert(def_id, e.name.clone());
-                    self.toplevel.insert(e.name.clone(), Res::Def(DefKind::Enum, def_id));
-                    self.resolve_enum_variants(def_id, &e.variants);
-                }
-                ItemKind::Fun(f) => {
-                    let def_id = self.alloc_def_id();
-                    self.building_ctx.def_kinds.insert(def_id, DefKind::Fun);
-                    self.building_ctx.def_spans.insert(def_id, item.span.clone());
-                    self.building_ctx.def_names.insert(def_id, f.name.clone());
-                    self.toplevel.insert(f.name.clone(), Res::Def(DefKind::Fun, def_id));
-                }
+                ItemKind::Struct(s) => self.resolve_struct(&item.span, s),
+                ItemKind::Enum(e) => self.resolve_enum(&item.span, e),
+                ItemKind::Fun(f) => self.resolve_function(&item.span, f),
                 ItemKind::Native(n) => {
-                    let def_id = self.alloc_def_id();
-                    self.building_ctx.def_kinds.insert(def_id, DefKind::NativeFun);
-                    self.building_ctx.def_spans.insert(def_id, item.span.clone());
-                    self.building_ctx.def_names.insert(def_id, n.name.clone());
-                    self.toplevel.insert(n.name.clone(), Res::Def(DefKind::NativeFun, def_id));
+                    self.resolve_native_function(&item.span, n)
                 }
-                ItemKind::Const(c) => {
-                    let def_id = self.alloc_def_id();
-                    self.building_ctx.def_kinds.insert(def_id, DefKind::Const);
-                    self.building_ctx.def_spans.insert(def_id, item.span.clone());
-                    self.building_ctx.def_names.insert(def_id, c.name.clone());
-                    self.toplevel.insert(c.name.clone(), Res::Def(DefKind::Const, def_id));
-                }
+                ItemKind::Const(c) => self.resolve_const(&item.span, c),
             }
         }
 
-        for (name, res) in &self.toplevel {
-            self.scope.insert(name.clone(), res.clone());
+        // Updating ribs stack
+        for (name, res) in &self.top_level {
+            self.ribs.insert(name.clone(), res.clone());
         }
     }
 
-
-    fn resolve_expr(&mut self, source: Arc<NamedSource<String>>, expr: &Expr) {
+    /// Resolves expression
+    fn resolve_expr(&mut self, expr: &Expr) {
         match &expr.kind {
             ExprKind::Lit(_) => {}
-
             ExprKind::Var(name) => {
-                self.resolve_name(name, expr.span.clone(), source.clone());
+                self.resolve_local(name, expr.span.clone());
             }
-
             ExprKind::Unary(inner, _op) => {
-                self.resolve_expr(source.clone(), inner);
+                self.resolve_expr(inner);
             }
-
             ExprKind::Bin(lhs, rhs, _op) => {
-                self.resolve_expr(source.clone(), lhs);
-                self.resolve_expr(source.clone(), rhs);
+                self.resolve_expr(lhs);
+                self.resolve_expr(rhs);
             }
-
             ExprKind::Assign(target, value) => {
-                self.resolve_expr(source.clone(), target);
-                self.resolve_expr(source.clone(), value);
+                self.resolve_expr(target);
+                self.resolve_expr(value);
             }
-
             ExprKind::If(cond, then_, else_) => {
-                self.resolve_expr(source.clone(), cond);
-                self.resolve_expr(source.clone(), then_);
+                self.resolve_expr(cond);
+                self.resolve_expr(then_);
                 if let Some(else_branch) = else_ {
-                    self.resolve_expr(source.clone(), else_branch);
+                    self.resolve_expr(else_branch);
                 }
             }
-
             ExprKind::Field(base, _name) => {
-                self.resolve_expr(source.clone(), base);
+                self.resolve_expr(base);
             }
-
             ExprKind::Call(func, args) => {
-                self.resolve_expr(source.clone(), func);
+                self.resolve_expr(func);
                 for arg in args {
-                    self.resolve_expr(source.clone(), arg);
+                    self.resolve_expr(arg);
                 }
             }
-
             ExprKind::Function(params, body) => {
-                self.scope.push();
+                self.ribs.push();
                 for param in params {
                     self.define_local(&param.name, param.span.clone());
-                    self.resolve_type_hint(&param.hint, source.clone());
+                    self.resolve_type_hint(&param.hint);
                 }
-                self.resolve_expr(source.clone(), body);
-                self.scope.pop();
+                self.resolve_expr(body);
+                self.ribs.pop();
             }
-
             ExprKind::Match(scrutinees, cases) => {
                 for scrutinee in scrutinees {
-                    self.resolve_expr(source.clone(), scrutinee);
+                    self.resolve_expr(scrutinee);
                 }
                 for case in cases {
-                    self.resolve_case(source.clone(), case);
+                    self.resolve_case(case);
                 }
             }
-
             ExprKind::Paren(inner) => {
-                self.resolve_expr(source.clone(), inner);
+                self.resolve_expr(inner);
             }
 
             ExprKind::Block(stmts) => {
-                self.scope.push();
+                self.ribs.push();
                 for stmt in stmts {
-                    self.resolve_stmt(source.clone(), stmt);
+                    self.resolve_stmt(stmt);
                 }
-                self.scope.pop();
+                self.ribs.pop();
             }
-
             ExprKind::Todo(msg) => {
                 if let Some(e) = msg {
-                    self.resolve_expr(source.clone(), e);
+                    self.resolve_expr(e);
                 }
             }
-
             ExprKind::Panic(msg) => {
                 if let Some(e) = msg {
-                    self.resolve_expr(source.clone(), e);
+                    self.resolve_expr(e);
                 }
             }
         }
     }
 
-    fn resolve_stmt(&mut self, source: Arc<NamedSource<String>>, stmt: &Stmt) {
+    /// Resolves statement
+    fn resolve_stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
             StmtKind::Let(name, hint, value) => {
-                self.resolve_expr(source.clone(), value);
-                self.resolve_type_hint(hint, source.clone());
+                self.resolve_expr(value);
+                self.resolve_type_hint(hint);
                 self.define_local(name, stmt.span.clone());
             }
             StmtKind::Expr(expr) => {
-                self.resolve_expr(source.clone(), expr);
+                self.resolve_expr(expr);
             }
         }
     }
 
-    fn resolve_pat(&mut self, source: Arc<NamedSource<String>>, pat: &Pat) {
-        
+    /// Resolves pattern
+    fn resolve_pat(&mut self, pat: &Pat) {
         match &pat.kind {
             PatKind::Lit(_) => {}
-
             PatKind::Wildcard => {}
-
             PatKind::BindTo(name) => {
                 self.define_local(name, pat.span.clone());
             }
-
             PatKind::Variant(expr) => {
-                self.resolve_expr(source.clone(), expr);
+                self.resolve_expr(expr);
             }
-
             PatKind::Unpack(constructor, sub_pats) => {
-                self.resolve_expr(source.clone(), constructor);
+                self.resolve_expr(constructor);
                 for sub_pat in sub_pats {
-                    self.resolve_pat(source.clone(), sub_pat);
+                    self.resolve_pat(sub_pat);
                 }
             }
-
             PatKind::Or(alternatives) => {
+                // Resolving alternatives
                 let mut all_bindings: Vec<HashSet<String>> = Vec::new();
-
                 for alt in alternatives {
-                    self.scope.push();
-                    self.resolve_pat(source.clone(),alt);
-                    let bindings = self.scope.current_bindings();
+                    self.ribs.push();
+                    self.resolve_pat(alt);
+                    let bindings = self.ribs.current_bindings();
                     all_bindings.push(bindings);
-                    self.scope.pop();
+                    self.ribs.pop();
                 }
 
+                // Checking all alternatives bounds same bindings
                 let first = &all_bindings[0];
                 for bindings in all_bindings.iter().skip(1) {
                     for name in first.difference(bindings) {
-                        self.errors.push(ResolverErrors::NotBound { 
-                            name: name.clone(), 
-                            src: source.clone(),
-                            span: pat.span.1.clone().into()
+                        self.errors.push(ResolverErrors::NotBound {
+                            name: name.clone(),
+                            src: pat.span.0.clone(),
+                            span: pat.span.1.clone().into(),
                         });
                     }
                     for name in bindings.difference(first) {
-                        self.errors.push(ResolverErrors::NotBound { 
-                            name: name.clone(), 
-                            src: source.clone(),
-                            span: pat.span.1.clone().into() 
+                        self.errors.push(ResolverErrors::NotBound {
+                            name: name.clone(),
+                            src: pat.span.0.clone(),
+                            span: pat.span.1.clone().into(),
                         });
                     }
                 }
-
-                self.scope.push();
-                self.resolve_pat(source.clone(),&alternatives[0]);
             }
         }
     }
 
-    fn resolve_case(&mut self, source: Arc<NamedSource<String>>, case: &Case) {
-        self.scope.push();
+    /// Resolves case
+    fn resolve_case(&mut self, case: &Case) {
+        self.ribs.push();
         for pat in &case.pats {
-            self.resolve_pat(source.clone(), pat);
+            self.resolve_pat(pat);
         }
-        self.resolve_expr(source.clone(), &case.body);
-        self.scope.pop();
+        self.resolve_expr(&case.body);
+        self.ribs.pop();
     }
 
-    fn resolve_type_hint(&mut self, hint: &TypeHint, source: Arc<NamedSource<String>>) {
+    /// Resolves type hint
+    fn resolve_type_hint(&mut self, hint: &TypeHint) {
         match hint {
             TypeHint::Local { span, name, args } => {
-                self.resolve_name(name, span.clone(), source.clone());
+                self.resolve_local(name, span.clone());
                 for arg in args {
-                    self.resolve_type_hint(arg, source.clone());
+                    self.resolve_type_hint(arg);
                 }
             }
-            TypeHint::Mod { span, module, name, args } => {
-                // module.Name — резолв модуля
-                // TODO: resolve module path
+            TypeHint::Mod { args, .. } => {
                 for arg in args {
-                    self.resolve_type_hint(arg, source.clone());
+                    self.resolve_type_hint(arg);
                 }
             }
             TypeHint::Fun { params, ret, .. } => {
                 for param in params {
-                    self.resolve_type_hint(param, source.clone());
+                    self.resolve_type_hint(param);
                 }
-                self.resolve_type_hint(ret, source.clone());
+                self.resolve_type_hint(ret);
             }
             TypeHint::Unit(_) => {}
             TypeHint::Infer => {}
         }
     }
 
+    /// Resolves bodies
     fn resolve_bodies(&mut self, module: &Module) {
         for item in &module.items {
             match &item.kind {
                 ItemKind::Fun(f) => {
-                    self.scope.push();
+                    self.ribs.push();
                     for param in &f.params {
                         self.define_local(&param.name, param.span.clone());
-                        self.resolve_type_hint(&param.hint, module.source.clone());
+                        self.resolve_type_hint(&param.hint);
                     }
-                    self.resolve_type_hint(&f.ret, module.source.clone());
-                    self.resolve_expr(module.source.clone(), &f.block);
-                    self.scope.pop();
+                    self.resolve_type_hint(&f.ret);
+                    self.resolve_expr(&f.block);
+                    self.ribs.pop();
                 }
                 ItemKind::Native(n) => {
-                    self.scope.push();
+                    self.ribs.push();
                     for param in &n.params {
-                        self.resolve_type_hint(&param.hint, module.source.clone());
+                        self.resolve_type_hint(&param.hint);
                     }
-                    self.resolve_type_hint(&n.ret, module.source.clone());
-                    self.scope.pop();
+                    self.resolve_type_hint(&n.ret);
+                    self.ribs.pop();
                 }
                 ItemKind::Const(c) => {
-                    self.resolve_type_hint(&c.hint, module.source.clone());
-                    self.resolve_expr(module.source.clone(), &c.value);
+                    self.resolve_type_hint(&c.hint);
+                    self.resolve_expr(&c.value);
                 }
                 ItemKind::Struct(s) => {
-                    self.scope.push();
+                    self.ribs.push();
                     for field in &s.fields {
-                        self.resolve_type_hint(&field.hint, module.source.clone());
+                        self.resolve_type_hint(&field.hint);
                     }
-                    self.scope.pop();
+                    self.ribs.pop();
                 }
                 ItemKind::Enum(e) => {
-                    self.scope.push();
+                    self.ribs.push();
                     for variant in &e.variants {
-                        for field_hint in &variant.fields {
-                            self.resolve_type_hint(field_hint, module.source.clone());
+                        for hint in &variant.fields {
+                            self.resolve_type_hint(hint);
                         }
                     }
-                    self.scope.pop();
+                    self.ribs.pop();
                 }
             }
         }
     }
 
-    pub fn resolve_ast(&mut self, module: &Module) -> Result<ResolveCtxt, Vec<ResolverErrors>> {
-        self.resolve_toplevel(&module);
+    /// Resolves ast
+    pub fn resolve_ast(
+        &mut self,
+        module: &Module,
+    ) -> Result<ResolveTable, Vec<ResolverErrors>> {
+        // Resolving top-level
+        self.resolve_top_level(&module);
+
+        // Resolving top-level bodies
         self.resolve_bodies(&module);
+
+        // Checking for errors
         if self.errors.is_empty() {
-            Ok(std::mem::take(&mut self.building_ctx))
+            Ok(std::mem::take(&mut self.table))
         } else {
             Err(std::mem::take(&mut self.errors))
         }

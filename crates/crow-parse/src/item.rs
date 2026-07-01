@@ -1,7 +1,11 @@
 /// Imports
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
-    atom::{Publicity, Purity, TypeHint}, item::{Enum, Field, Fun, Item, ItemKind, Struct, Use, UseKind, UsePath, Variant},
+    atom::{Publicity, TypeHint},
+    item::{
+        Enum, Field, Fun, Item, ItemKind, Struct, Use, UseKind, UsePath,
+        Variant,
+    },
 };
 use crow_lex::token::TokenKind;
 use crow_macros::bail;
@@ -99,12 +103,6 @@ impl<'s> Parser<'s> {
     fn fun_item_kind(&mut self) -> ItemKind {
         // Bumping `pure` if specified
         let start_span = self.peek().span.clone();
-        let purity = if self.check(TokenKind::Pure) {
-            self.bump();
-            Purity::Pure
-        } else {
-            Purity::Not
-        };
 
         // Bumping `fun`
         self.expect(TokenKind::Fun);
@@ -127,13 +125,12 @@ impl<'s> Parser<'s> {
 
         ItemKind::Fun(Fun {
             span: start_span + end_span,
-            purity,
             name,
             generics,
             params,
             ret,
             block,
-            effects
+            effects,
         })
     }
 
@@ -169,7 +166,9 @@ impl<'s> Parser<'s> {
             UseKind::As(name)
         } else if self.check(TokenKind::For) {
             self.bump();
-            let names = self.sep_by_2(TokenKind::Comma, |p| p.expect(TokenKind::Id).lexeme);
+            let names = self.sep_by_2(TokenKind::Comma, |p| {
+                p.expect(TokenKind::Id).lexeme
+            });
 
             UseKind::For(names)
         } else {

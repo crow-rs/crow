@@ -8,13 +8,6 @@ pub enum Publicity {
     Priv,
 }
 
-/// Represents function purity
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Purity {
-    Pure,
-    Not,
-}
-
 /// Binary operator
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinOp {
@@ -71,6 +64,7 @@ pub enum Lit {
 /// Represents an effect hint (effect annotation)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EffectHint {
+    pub span: Span,
     pub name: String,
 }
 

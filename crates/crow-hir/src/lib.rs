@@ -1,27 +1,39 @@
-use crow_resolving::resolve_ctx::ResolveCtxt;
-
-use crate::id::BodyId;
-
-pub mod id;
-pub mod ty;
-pub mod expr;
-pub mod stmt;
-pub mod pat;
-pub mod item;
+/// Modules
 pub mod body;
+pub mod expr;
+pub mod id;
+pub mod item;
+pub mod pat;
+pub mod stmt;
+pub mod ty;
 
+/// Imports
+use crate::id::{BodyId, ItemId};
+use crow_fresh::FreshenVec;
+use crow_resolving::table::ResolveTable;
 
+/// HIR root
 #[derive(Debug)]
 pub struct Hir {
-    pub items: Vec<item::HirItem>,
+    /// Items mapping: ItemId -> HirItem
+    pub items: FreshenVec<u32, item::HirItem>,
 
-    pub bodies: Vec<body::HirBody>,
+    /// Bodies mapping: BodyId -> HirBody
+    pub bodies: FreshenVec<u32, body::HirBody>,
 
-    pub resolve: ResolveCtxt,
+    /// Resolve context
+    pub resolve: ResolveTable,
 }
 
+/// Implementation of a hir
 impl Hir {
+    /// Returns body by id
     pub fn body(&self, id: BodyId) -> &body::HirBody {
-        &self.bodies[id.as_index()]
+        &self.bodies.item_at(id.0)
+    }
+
+    /// Returns item by id
+    pub fn item(&self, id: ItemId) -> &item::HirItem {
+        &self.items.item_at(id.0)
     }
 }

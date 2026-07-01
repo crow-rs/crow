@@ -6,5 +6,7 @@ edition = "2024"
 [dependencies]
 crow-ast = { path = "../crow-ast"}
 crow-lex = { path = "../crow-lex" }
+crow-macros = { path = "../crow-macros" }
+crow-fresh = { path = "../crow-fresh" }
 miette = { git = "https://github.com/crow-rs/miette" }
 thiserror = "2.0.18"

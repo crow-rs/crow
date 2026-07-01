@@ -1,6 +1,6 @@
 /// Imports
 use crate::{
-    atom::{Effects, Param, Publicity, Purity, TypeHint},
+    atom::{Effects, Param, Publicity, TypeHint},
     expr::Expr,
 };
 use crow_lex::token::Span;
@@ -69,7 +69,6 @@ pub struct Enum {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Fun {
     pub span: Span,
-    pub purity: Purity,
     pub name: String,
     pub generics: Vec<String>,
     pub params: Vec<Param>,
@@ -116,7 +115,7 @@ pub struct Item {
     pub kind: ItemKind,
 }
 
-/// Module item
+/// Module item, the root of a file
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Module {
     /// Source of the module

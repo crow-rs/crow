@@ -1,7 +1,9 @@
+/// Imports
 use crate::{id::*, ty::HirTy};
 use crow_lex::token::Span;
-use crow_resolving::resolve_ctx::LocalId;
+use crow_resolving::table::LocalId;
 
+/// Defines hir statement
 #[derive(Debug, Clone)]
 pub struct HirStmt {
     pub id: StmtId,
@@ -9,6 +11,7 @@ pub struct HirStmt {
     pub kind: HirStmtKind,
 }
 
+/// Defines hir statement knid
 #[derive(Debug, Clone)]
 pub enum HirStmtKind {
     Let {

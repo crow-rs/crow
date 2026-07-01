@@ -1,22 +1,21 @@
-use std::sync::Arc;
-
+/// Imports
 use miette::{Diagnostic, NamedSource, SourceSpan};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Parser error
 #[derive(Error, Diagnostic, Debug)]
 pub enum ResolverErrors {
-    #[error("undefied name `{undef_name:?}`")]
+    #[error("undefied name `{name:?}`")]
     #[diagnostic(code(resolve::undefined_name))]
     UndefinedName {
-        undef_name: String,
+        name: String,
         #[source_code]
         src: Arc<NamedSource<String>>,
         #[label("got undefined name here...")]
         span: SourceSpan,
     },
-
-    #[error("name `{name:?} not bound in all alternatives`")]
+    #[error("name `{name:?}` not bound in all alternatives`")]
     #[diagnostic(code(resolve::undefined_name))]
     NotBound {
         name: String,
@@ -25,5 +24,4 @@ pub enum ResolverErrors {
         #[label("got unbounded name here...")]
         span: SourceSpan,
     },
-
 }

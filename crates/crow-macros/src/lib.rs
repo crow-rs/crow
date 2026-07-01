@@ -10,8 +10,7 @@ macro_rules! bail {
 /// Emits an error
 #[macro_export]
 macro_rules! emit {
-    ($self:expr, $report:expr) => {{
-        $self.has_error = true;
+    ($report:expr) => {{
         let report: miette::Report = $report.into();
         println!("{report:?}");
     }};

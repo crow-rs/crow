@@ -12,5 +12,4 @@ macro_rules! define_id {
         )*
     };
 }
-
 define_id!(ExprId, StmtId, PatId, ItemId, BodyId, HirLocalId);

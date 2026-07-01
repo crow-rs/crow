@@ -14,7 +14,7 @@ impl<'s> Parser<'s> {
                 TokenKind::Comma,
                 |p| p.type_hint(),
             )
-        } else  {
+        } else {
             Vec::new()
         }
     }
@@ -134,8 +134,11 @@ impl<'s> Parser<'s> {
     /// Parses effect hint
     /// todo: supports generic effect
     pub(crate) fn effect_hint(&mut self) -> EffectHint {
-        let name = self.expect(TokenKind::Id).lexeme;
-        EffectHint { name }
+        let name = self.expect(TokenKind::Id);
+        EffectHint {
+            span: name.span,
+            name: name.lexeme,
+        }
     }
 
     /// Parses function effects

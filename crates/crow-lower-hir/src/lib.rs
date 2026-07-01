@@ -1,217 +1,246 @@
-// hir/lower.rs — AST → HIR
-
+/// Imports
 use crow_ast::{
-    atom::{AssignOp, BinOp, Lit, TypeHint, Effects, EffectHint},
-    expr::{Expr, ExprKind, Case, Pat, PatKind},
+    atom::{Effects, Publicity, TypeHint},
+    expr::{Case, Expr, ExprKind, Pat, PatKind},
     item::{Item, ItemKind, Module},
     stmt::{Stmt, StmtKind},
 };
-use crow_hir::{Hir, body::HirBody, expr::{DivergeKind, HirArm, HirExpr, HirExprKind, HirParam}, id::{BodyId, ExprId, ItemId, PatId, StmtId}, item::{HirConstDef, HirEnumDef, HirFieldDef, HirFnDef, HirItem, HirItemKind, HirNativeFnDef, HirStructDef, HirVariantDef}, pat::{HirPat, HirPatKind}, stmt::{HirStmt, HirStmtKind}, ty::{HirEffectRef, HirEffects, HirTy, HirTyKind}};
+use crow_fresh::FreshenVec;
+use crow_hir::{
+    Hir,
+    body::HirBody,
+    expr::{DivergeKind, HirArm, HirExpr, HirExprKind, HirParam},
+    id::{BodyId, ExprId, ItemId, PatId, StmtId},
+    item::{
+        HirConstDef, HirEnumDef, HirFieldDef, HirFnDef, HirItem,
+        HirItemKind, HirNativeFnDef, HirStructDef, HirVariantDef,
+    },
+    pat::{HirPat, HirPatKind},
+    stmt::{HirStmt, HirStmtKind},
+    ty::{HirEffectRow, HirEffects, HirTy, HirTyKind},
+};
 use crow_lex::token::Span;
-use crow_resolving::resolve_ctx::{DefId, LocalId, Res, ResolveCtxt};
+use crow_macros::bug;
+use crow_resolving::table::{DefId, LocalId, Res, ResolveTable};
 
+/// Defines lowering context,
+/// AST → HIR
 pub struct LoweringCtxt {
-    resolve: ResolveCtxt,
+    /// Resolve context
+    resolve: ResolveTable,
 
-    next_item_id: u32,
-    next_body_id: u32,
-
-    current_exprs: Vec<HirExpr>,
-    current_stmts: Vec<HirStmt>,
-    current_pats: Vec<HirPat>,
-
-    items: Vec<HirItem>,
-    bodies: Vec<HirBody>,
+    /// Current expr, stmts, pats, arms, items, bodies
+    exprs: FreshenVec<u32, HirExpr>,
+    stmts: FreshenVec<u32, HirStmt>,
+    pats: FreshenVec<u32, HirPat>,
+    items: FreshenVec<u32, HirItem>,
+    bodies: FreshenVec<u32, HirBody>,
 }
 
+/// Implementation of lowering
 impl LoweringCtxt {
-    pub fn new(resolve: ResolveCtxt) -> Self {
+    /// Creates new lowering context
+    pub fn new(resolve: ResolveTable) -> Self {
         Self {
             resolve,
-            next_item_id: 0,
-            next_body_id: 0,
-            current_exprs: Vec::new(),
-            current_stmts: Vec::new(),
-            current_pats: Vec::new(),
-            items: Vec::new(),
-            bodies: Vec::new(),
+            exprs: FreshenVec::new(),
+            stmts: FreshenVec::new(),
+            pats: FreshenVec::new(),
+            items: FreshenVec::new(),
+            bodies: FreshenVec::new(),
         }
     }
 
-
-    fn alloc_item_id(&mut self) -> ItemId {
-        let id = ItemId(self.next_item_id);
-        self.next_item_id += 1;
-        id
-    }
-
-    fn alloc_body_id(&mut self) -> BodyId {
-        let id = BodyId(self.next_body_id);
-        self.next_body_id += 1;
-        id
-    }
-
-    fn alloc_expr(&mut self, span: Span, kind: HirExprKind) -> ExprId {
-        let id = ExprId(self.current_exprs.len() as u32);
-        self.current_exprs.push(HirExpr { id, span, kind });
-        id
-    }
-
-    fn alloc_stmt(&mut self, span: Span, kind: HirStmtKind) -> StmtId {
-        let id = StmtId(self.current_stmts.len() as u32);
-        self.current_stmts.push(HirStmt { id, span, kind });
-        id
-    }
-
-    fn alloc_pat(&mut self, span: Span, kind: HirPatKind) -> PatId {
-        let id = PatId(self.current_pats.len() as u32);
-        self.current_pats.push(HirPat { id, span, kind });
-        id
-    }
-
+    /// Lowers body
     fn lower_body(&mut self, expr: &Expr) -> BodyId {
-        let body_id = self.alloc_body_id();
+        // Taking expressions, statements and patterns
+        let prev_exprs = self.exprs.take();
+        let prev_stmts = self.stmts.take();
+        let prev_pats = self.pats.take();
 
-        let prev_exprs = std::mem::take(&mut self.current_exprs);
-        let prev_stmts = std::mem::take(&mut self.current_stmts);
-        let prev_pats = std::mem::take(&mut self.current_pats);
-
+        // Lowering root expr
         let root_expr = self.lower_expr(expr);
 
+        // Preparing body
         let body = HirBody {
-            id: body_id,
+            id: BodyId(self.bodies.next_id()),
             root_expr,
-            exprs: std::mem::replace(&mut self.current_exprs, prev_exprs),
-            stmts: std::mem::replace(&mut self.current_stmts, prev_stmts),
-            pats: std::mem::replace(&mut self.current_pats, prev_pats),
+            exprs: self.exprs.replace(prev_exprs),
+            stmts: self.stmts.replace(prev_stmts),
+            pats: self.pats.replace(prev_pats),
         };
-        self.bodies.push(body);
-        body_id
+
+        // Allocating body
+        BodyId(self.bodies.alloc(body))
     }
 
+    /// Allocates expression
+    fn alloc_expr(&mut self, span: Span, kind: HirExprKind) -> ExprId {
+        ExprId(self.exprs.alloc(HirExpr {
+            id: ExprId(self.exprs.next_id()),
+            span,
+            kind,
+        }))
+    }
+
+    /// Loweres expression
     fn lower_expr(&mut self, expr: &Expr) -> ExprId {
+        // Getting expression span
         let span = expr.span.clone();
 
+        // Lowering expresion
         match &expr.kind {
             ExprKind::Lit(lit) => {
                 self.alloc_expr(span, HirExprKind::Lit(lit.clone()))
             }
-
-            ExprKind::Var(name) => {
-                let res = self.resolve.resolutions
+            ExprKind::Var(_) => {
+                let res = self
+                    .resolve
+                    .resolutions
                     .get(&expr.span)
                     .cloned()
                     .unwrap_or(Res::Err);
                 self.alloc_expr(span, HirExprKind::Var(res))
             }
-
             ExprKind::Unary(inner, op) => {
                 let inner_id = self.lower_expr(inner);
                 self.alloc_expr(span, HirExprKind::Unary(inner_id, *op))
             }
-
             ExprKind::Bin(lhs, rhs, op) => {
                 let lhs_id = self.lower_expr(lhs);
                 let rhs_id = self.lower_expr(rhs);
-                self.alloc_expr(span, HirExprKind::Bin(lhs_id, rhs_id, *op))
+                self.alloc_expr(
+                    span,
+                    HirExprKind::Bin(lhs_id, rhs_id, *op),
+                )
             }
-
             // Desugar: `a += b` → `a = a + b`
             ExprKind::Assign(target, value) => {
                 let target_id = self.lower_expr(target);
                 let value_id = self.lower_expr(value);
-                self.alloc_expr(span, HirExprKind::Assign(target_id, value_id))
+                self.alloc_expr(
+                    span,
+                    HirExprKind::Assign(target_id, value_id),
+                )
             }
-
             ExprKind::If(cond, then_, else_) => {
                 let cond_id = self.lower_expr(cond);
                 let then_id = self.lower_expr(then_);
                 let else_id = else_.as_ref().map(|e| self.lower_expr(e));
-                self.alloc_expr(span, HirExprKind::If(cond_id, then_id, else_id))
+                self.alloc_expr(
+                    span,
+                    HirExprKind::If(cond_id, then_id, else_id),
+                )
             }
-
             ExprKind::Field(base, name) => {
                 let base_id = self.lower_expr(base);
-                self.alloc_expr(span, HirExprKind::Field(base_id, name.clone()))
+                self.alloc_expr(
+                    span,
+                    HirExprKind::Field(base_id, name.clone()),
+                )
             }
-
             ExprKind::Call(func, args) => {
                 let func_id = self.lower_expr(func);
-                let arg_ids: Vec<ExprId> = args.iter()
-                    .map(|a| self.lower_expr(a))
-                    .collect();
+                let arg_ids: Vec<ExprId> =
+                    args.iter().map(|a| self.lower_expr(a)).collect();
                 self.alloc_expr(span, HirExprKind::Call(func_id, arg_ids))
             }
-
             ExprKind::Function(params, body) => {
-                let hir_params: Vec<HirParam> = params.iter()
-                    .map(|p| self.lower_param(p))
-                    .collect();
+                let hir_params: Vec<HirParam> =
+                    params.iter().map(|p| self.lower_param(p)).collect();
                 let body_id = self.lower_expr(body);
-                self.alloc_expr(span, HirExprKind::Lambda {
-                    params: hir_params,
-                    body: body_id,
-                })
+                self.alloc_expr(
+                    span,
+                    HirExprKind::Lambda {
+                        params: hir_params,
+                        body: body_id,
+                    },
+                )
             }
-
             ExprKind::Match(scrutinees, cases) => {
-                let scrutinee_ids: Vec<ExprId> = scrutinees.iter()
+                let subject_ids: Vec<_> = scrutinees
+                    .iter()
                     .map(|s| self.lower_expr(s))
                     .collect();
-                let arms: Vec<HirArm> = cases.iter()
-                    .map(|c| self.lower_arm(c))
-                    .collect();
-                self.alloc_expr(span, HirExprKind::Match {
-                    scrutinees: scrutinee_ids,
-                    arms,
-                })
+                let arms: Vec<_> =
+                    cases.iter().map(|c| self.lower_arm(c)).collect();
+                self.alloc_expr(
+                    span,
+                    HirExprKind::Match {
+                        subjects: subject_ids,
+                        arms,
+                    },
+                )
             }
-
-            // Paren — десугарится, просто пробрасываем inner
-            ExprKind::Paren(inner) => {
-                self.lower_expr(inner)
-            }
-
+            // Desugar `(a + b)` → `a + b`
+            ExprKind::Paren(inner) => self.lower_expr(inner),
             ExprKind::Block(stmts) => {
-                let stmt_ids: Vec<StmtId> = stmts.iter()
-                    .map(|s| self.lower_stmt(s))
-                    .collect();
+                let stmt_ids: Vec<StmtId> =
+                    stmts.iter().map(|s| self.lower_stmt(s)).collect();
                 self.alloc_expr(span, HirExprKind::Block(stmt_ids))
             }
-
+            // Lower `ExprKind::Todo` → `ExprKind::Diverge`
             ExprKind::Todo(msg) => {
                 let msg_id = msg.as_ref().map(|e| self.lower_expr(e));
-                self.alloc_expr(span, HirExprKind::Diverge(DivergeKind::Todo, msg_id))
+                self.alloc_expr(
+                    span,
+                    HirExprKind::Diverge(DivergeKind::Todo, msg_id),
+                )
             }
-
+            // Lower `ExprKind::Panic` → `ExprKind::Diverge`
             ExprKind::Panic(msg) => {
                 let msg_id = msg.as_ref().map(|e| self.lower_expr(e));
-                self.alloc_expr(span, HirExprKind::Diverge(DivergeKind::Panic, msg_id))
+                self.alloc_expr(
+                    span,
+                    HirExprKind::Diverge(DivergeKind::Panic, msg_id),
+                )
             }
         }
     }
 
+    /// Allocates statement
+    fn alloc_stmt(&mut self, span: Span, kind: HirStmtKind) -> StmtId {
+        StmtId(self.stmts.alloc(HirStmt {
+            id: StmtId(self.stmts.next_id()),
+            span,
+            kind,
+        }))
+    }
+
+    /// Lowers statement
     fn lower_stmt(&mut self, stmt: &Stmt) -> StmtId {
+        // Getting statement span
         let span = stmt.span.clone();
 
+        // Lowering statement
         match &stmt.kind {
+            // Linking resolution with statement for let binding
             StmtKind::Let(name, hint, value) => {
                 let init_id = self.lower_expr(value);
                 let ty = self.lower_type_hint(hint);
 
-                let local_id = match self.resolve.resolutions.get(&stmt.span) {
-                    Some(Res::Local(lid)) => *lid,
-                    _ => LocalId(u32::MAX), // fallback, не должно случиться
-                };
+                let local_id =
+                    match self.resolve.resolutions.get(&stmt.span) {
+                        Some(Res::Local(lid)) => *lid,
+                        _ => {
+                            bug!(format!(
+                                "no local found for span `{:?}`",
+                                stmt.span
+                            ))
+                        }
+                    };
 
-                self.alloc_stmt(span, HirStmtKind::Let {
-                    local_id,
-                    name: name.clone(),
-                    ty,
-                    init: init_id,
-                })
+                self.alloc_stmt(
+                    span,
+                    HirStmtKind::Let {
+                        local_id,
+                        name: name.clone(),
+                        ty,
+                        init: init_id,
+                    },
+                )
             }
-
+            // Lowering expression for expr-stmt
             StmtKind::Expr(expr) => {
                 let expr_id = self.lower_expr(expr);
                 self.alloc_stmt(span, HirStmtKind::Expr(expr_id))
@@ -219,47 +248,62 @@ impl LoweringCtxt {
         }
     }
 
+    /// Allocates pattern
+    fn alloc_pat(&mut self, span: Span, kind: HirPatKind) -> PatId {
+        PatId(self.pats.alloc(HirPat {
+            id: PatId(self.pats.next_id()),
+            span,
+            kind,
+        }))
+    }
+
+    /// Lowers pattern
     fn lower_pat(&mut self, pat: &Pat) -> PatId {
+        // Getting pattern span
         let span = pat.span.clone();
 
+        // Lowering pattern
         match &pat.kind {
             PatKind::Lit(lit) => {
                 self.alloc_pat(span, HirPatKind::Lit(lit.clone()))
             }
-
             PatKind::Wildcard => {
                 self.alloc_pat(span, HirPatKind::Wildcard)
             }
-
             PatKind::BindTo(name) => {
-                let local_id = match self.resolve.resolutions.get(&pat.span) {
-                    Some(Res::Local(lid)) => *lid,
-                    _ => LocalId(u32::MAX),
-                };
-                self.alloc_pat(span, HirPatKind::Bind(local_id, name.clone()))
+                let local_id =
+                    match self.resolve.resolutions.get(&pat.span) {
+                        Some(Res::Local(lid)) => *lid,
+                        _ => LocalId(u32::MAX),
+                    };
+                self.alloc_pat(
+                    span,
+                    HirPatKind::Bind(local_id, name.clone()),
+                )
             }
-
             PatKind::Variant(expr) => {
-                let res = self.resolve.resolutions
+                let res = self
+                    .resolve
+                    .resolutions
                     .get(&expr.span)
                     .cloned()
                     .unwrap_or(Res::Err);
                 self.alloc_pat(span, HirPatKind::Variant(res))
             }
-
             PatKind::Unpack(constructor, sub_pats) => {
-                let res = self.resolve.resolutions
+                let res = self
+                    .resolve
+                    .resolutions
                     .get(&constructor.span)
                     .cloned()
                     .unwrap_or(Res::Err);
-                let sub_pat_ids: Vec<PatId> = sub_pats.iter()
-                    .map(|p| self.lower_pat(p))
-                    .collect();
+                let sub_pat_ids: Vec<PatId> =
+                    sub_pats.iter().map(|p| self.lower_pat(p)).collect();
                 self.alloc_pat(span, HirPatKind::Unpack(res, sub_pat_ids))
             }
-
             PatKind::Or(alternatives) => {
-                let alt_ids: Vec<PatId> = alternatives.iter()
+                let alt_ids: Vec<PatId> = alternatives
+                    .iter()
                     .map(|p| self.lower_pat(p))
                     .collect();
                 self.alloc_pat(span, HirPatKind::Or(alt_ids))
@@ -267,50 +311,83 @@ impl LoweringCtxt {
         }
     }
 
+    /// Lowers match arm
     fn lower_arm(&mut self, case: &Case) -> HirArm {
-        let pat_ids: Vec<PatId> = case.pats.iter()
-            .map(|p| self.lower_pat(p))
-            .collect();
-        let body_id = self.lower_expr(&case.body);
+        let pats: Vec<_> =
+            case.pats.iter().map(|p| self.lower_pat(p)).collect();
+        let body = self.lower_expr(&case.body);
         HirArm {
             span: case.span.clone(),
-            pats: pat_ids,
-            body: body_id,
+            pats,
+            body,
         }
     }
 
+    /// Lowers type hint
     fn lower_type_hint(&self, hint: &TypeHint) -> HirTy {
+        // Lowering hint
         match hint {
-            TypeHint::Local { span, name, args } => {
-                let res = self.resolve.resolutions
+            // Linking type with res
+            TypeHint::Local { span, args, .. } => {
+                let res = self
+                    .resolve
+                    .resolutions
                     .get(span)
                     .cloned()
                     .unwrap_or(Res::Err);
-                let hir_args: Vec<HirTy> = args.iter()
-                    .map(|a| self.lower_type_hint(a))
-                    .collect();
+                let hir_args: Vec<HirTy> =
+                    args.iter().map(|a| self.lower_type_hint(a)).collect();
                 HirTy {
                     span: span.clone(),
-                    kind: HirTyKind::Resolved { res, args: hir_args },
-                }
-            }
-
-            TypeHint::Mod { span, module, name, args } => {
-                let hir_args: Vec<HirTy> = args.iter()
-                    .map(|a| self.lower_type_hint(a))
-                    .collect();
-                HirTy {
-                    span: span.clone(),
-                    kind: HirTyKind::ModPath {
-                        module_res: Res::Err, // TODO: resolve module
-                        name: name.clone(),
+                    kind: HirTyKind::Res {
+                        res,
                         args: hir_args,
                     },
                 }
             }
-
-            TypeHint::Fun { span, params, ret, effects } => {
-                let hir_params: Vec<HirTy> = params.iter()
+            TypeHint::Mod {
+                span,
+                module,
+                name,
+                args,
+            } => {
+                let res = self
+                    .resolve
+                    .module_by_name
+                    .get(module)
+                    .and_then(|mod_def_id| {
+                        self.resolve.module_exports.get(mod_def_id)
+                    })
+                    .and_then(|mod_exports| mod_exports.get(name))
+                    .map(|def_id| {
+                        Res::Def(
+                            self.resolve
+                                .def_kinds
+                                .get(def_id)
+                                .unwrap()
+                                .clone(),
+                            def_id.clone(),
+                        )
+                    })
+                    .unwrap_or(Res::Err);
+                let hir_args: Vec<HirTy> =
+                    args.iter().map(|a| self.lower_type_hint(a)).collect();
+                HirTy {
+                    span: span.clone(),
+                    kind: HirTyKind::Res {
+                        res,
+                        args: hir_args,
+                    },
+                }
+            }
+            TypeHint::Fun {
+                span,
+                params,
+                ret,
+                effects,
+            } => {
+                let hir_params: Vec<HirTy> = params
+                    .iter()
                     .map(|p| self.lower_type_hint(p))
                     .collect();
                 let hir_ret = Box::new(self.lower_type_hint(ret));
@@ -324,35 +401,33 @@ impl LoweringCtxt {
                     },
                 }
             }
-
-            TypeHint::Unit(span) => {
-                HirTy {
-                    span: span.clone(),
-                    kind: HirTyKind::Unit,
-                }
-            }
-
-            TypeHint::Infer => {
-                HirTy {
-                    span: Span::zeroed(), 
-                    kind: HirTyKind::Infer,
-                }
-            }
+            TypeHint::Unit(span) => HirTy {
+                span: span.clone(),
+                kind: HirTyKind::Unit,
+            },
+            TypeHint::Infer => HirTy {
+                span: Span::zeroed(),
+                kind: HirTyKind::Infer,
+            },
         }
     }
 
+    /// Lowers effects
     fn lower_effects(&self, effects: &Effects) -> HirEffects {
         HirEffects {
-            known: effects.known.iter()
-                .map(|e| HirEffectRef {
-                    span: Span::zeroed(), // TODO: span от EffectHint
-                    name: e.name.clone(),
+            known: effects
+                .known
+                .iter()
+                .map(|e| HirEffectRow {
+                    span: e.span.clone(),
+                    res: todo!("not implemented :("),
                 })
                 .collect(),
             tail: effects.tail,
         }
     }
 
+    /// Lowers params
     fn lower_param(&self, param: &crow_ast::atom::Param) -> HirParam {
         let local_id = match self.resolve.resolutions.get(&param.span) {
             Some(Res::Local(lid)) => *lid,
@@ -366,14 +441,36 @@ impl LoweringCtxt {
         }
     }
 
-    fn lower_item(&mut self, item: &Item) -> HirItem {
-        let item_id = self.alloc_item_id();
+    /// Allocates item
+    fn alloc_item(
+        &mut self,
+        span: Span,
+        def_id: DefId,
+        publicity: Publicity,
+        kind: HirItemKind,
+    ) -> ItemId {
+        ItemId(self.items.alloc(HirItem {
+            id: ItemId(self.items.next_id()),
+            span,
+            def_id,
+            publicity,
+            kind,
+        }))
+    }
+
+    /// Lowers item
+    fn lower_item(&mut self, item: &Item) -> ItemId {
+        // Getting publicity and span
+        let publicity = item.publicity;
         let span = item.span.clone();
 
+        // Lowering item
         let (def_id, kind) = match &item.kind {
             ItemKind::Struct(s) => {
                 let def_id = self.find_toplevel_def(&s.name);
-                let fields: Vec<HirFieldDef> = s.fields.iter()
+                let fields: Vec<HirFieldDef> = s
+                    .fields
+                    .iter()
                     .enumerate()
                     .map(|(i, f)| HirFieldDef {
                         span: f.span.clone(),
@@ -382,18 +479,24 @@ impl LoweringCtxt {
                         ty: self.lower_type_hint(&f.hint),
                     })
                     .collect();
-                (def_id, HirItemKind::Struct(HirStructDef {
-                    name: s.name.clone(),
-                    fields,
-                }))
+                (
+                    def_id,
+                    HirItemKind::Struct(HirStructDef {
+                        name: s.name.clone(),
+                        fields,
+                    }),
+                )
             }
-
             ItemKind::Enum(e) => {
                 let def_id = self.find_toplevel_def(&e.name);
-                let variants: Vec<HirVariantDef> = e.variants.iter()
+                let variants: Vec<HirVariantDef> = e
+                    .variants
+                    .iter()
                     .enumerate()
                     .map(|(i, v)| {
-                        let variant_def_id = self.resolve.variant_by_name
+                        let variant_def_id = self
+                            .resolve
+                            .variant_by_name
                             .get(&(def_id, v.name.clone()))
                             .copied()
                             .unwrap_or(DefId(u32::MAX));
@@ -402,92 +505,102 @@ impl LoweringCtxt {
                             def_id: variant_def_id,
                             name: v.name.clone(),
                             index: i as u32,
-                            fields: v.fields.iter()
+                            fields: v
+                                .fields
+                                .iter()
                                 .map(|f| self.lower_type_hint(f))
                                 .collect(),
                         }
                     })
                     .collect();
-                (def_id, HirItemKind::Enum(HirEnumDef {
-                    name: e.name.clone(),
-                    variants,
-                }))
+                (
+                    def_id,
+                    HirItemKind::Enum(HirEnumDef {
+                        name: e.name.clone(),
+                        variants,
+                    }),
+                )
             }
-
             ItemKind::Fun(f) => {
                 let def_id = self.find_toplevel_def(&f.name);
-                let params: Vec<HirParam> = f.params.iter()
-                    .map(|p| self.lower_param(p))
-                    .collect();
+                let params: Vec<HirParam> =
+                    f.params.iter().map(|p| self.lower_param(p)).collect();
                 let ret = self.lower_type_hint(&f.ret);
                 let effects = self.lower_effects(&f.effects);
                 let body_id = self.lower_body(&f.block);
 
-                (def_id, HirItemKind::Fun(HirFnDef {
-                    name: f.name.clone(),
-                    params,
-                    effects,
-                    ret,
-                    body: body_id,
-                }))
+                (
+                    def_id,
+                    HirItemKind::Fun(HirFnDef {
+                        name: f.name.clone(),
+                        params,
+                        effects,
+                        ret,
+                        body: body_id,
+                    }),
+                )
             }
-
             ItemKind::Native(n) => {
                 let def_id = self.find_toplevel_def(&n.name);
-                let params: Vec<HirParam> = n.params.iter()
-                    .map(|p| self.lower_param(p))
-                    .collect();
+                let params: Vec<HirParam> =
+                    n.params.iter().map(|p| self.lower_param(p)).collect();
                 let ret = self.lower_type_hint(&n.ret);
-                (def_id, HirItemKind::Native(HirNativeFnDef {
-                    name: n.name.clone(),
-                    params,
-                    ret,
-                    native_body: n.body.clone(),
-                }))
+                (
+                    def_id,
+                    HirItemKind::Native(HirNativeFnDef {
+                        name: n.name.clone(),
+                        params,
+                        ret,
+                        native_body: n.body.clone(),
+                    }),
+                )
             }
-
             ItemKind::Const(c) => {
                 let def_id = self.find_toplevel_def(&c.name);
                 let ty = self.lower_type_hint(&c.hint);
                 let body_id = self.lower_body(&c.value);
-                (def_id, HirItemKind::Const(HirConstDef {
-                    name: c.name.clone(),
-                    ty,
-                    body: body_id,
-                }))
+                (
+                    def_id,
+                    HirItemKind::Const(HirConstDef {
+                        name: c.name.clone(),
+                        ty,
+                        body: body_id,
+                    }),
+                )
             }
         };
 
-        HirItem {
-            id: item_id,
-            def_id,
-            publicity: item.publicity,
-            span,
-            kind,
-        }
+        self.alloc_item(span, def_id, publicity, kind)
     }
 
+    /// Finds top-level def
     fn find_toplevel_def(&self, name: &str) -> DefId {
-        self.resolve.def_names.iter()
+        self.resolve
+            .def_names
+            .iter()
             .find(|(_, n)| n.as_str() == name)
             .map(|(id, _)| *id)
             .unwrap_or(DefId(u32::MAX))
     }
 
+    /// Lowers module
     pub fn lower(mut self, module: &Module) -> Hir {
-        let items: Vec<HirItem> = module.items.iter()
-            .map(|item| self.lower_item(item))
-            .collect();
+        // Lowering items
+        for item in &module.items {
+            let _ = self.lower_item(&item);
+        }
 
+        // Done!
         Hir {
-            items,
+            items: self.items,
             bodies: self.bodies,
             resolve: self.resolve,
         }
     }
 }
 
-pub fn lower_module(module: &Module, resolve: ResolveCtxt) -> Hir {
+/// Lowers module
+pub fn lower_module(module: &Module, resolve: ResolveTable) -> Hir {
     let lcx = LoweringCtxt::new(resolve);
     lcx.lower(module)
 }

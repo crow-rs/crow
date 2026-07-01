@@ -43,10 +43,6 @@ pub struct Driver {
     config: DriverConfig,
 }
 
-struct IdkWhatIsThis {
-    pub has_error: bool
-}
-
 /// Driver implementation
 impl Driver {
     /// Creates new orchestrator
@@ -222,24 +218,26 @@ impl Driver {
         info!("performing name resolution...");
 
         let mut resolver = Resolver::new();
-        let mut idk = IdkWhatIsThis {has_error: false};
-
         for name in sorted {
-            info!("typechecking `{name}`");
+            // Resolving module
+            info!("resolving `{name}`");
             let module = loaded_modules.get(name).unwrap().clone();
             let res = resolver.resolve_ast(&module);
+            info!("resolving result: {res:#?}");
+            // Typechecking module
             match res {
                 Ok(_) => {
+                    info!("typechecking `{name}`");
                     let hir = lower_module(&module, res.ok().unwrap());
                     let result = typeck_module(&hir);
 
                     for err in result.1 {
-                        emit!(idk, err)
+                        emit!(err)
                     }
-                },
+                }
                 Err(errors) => {
                     for err in errors {
-                        emit!(idk, err)
+                        emit!(err)
                     }
                 }
             }
