@@ -12,7 +12,8 @@ pub enum TokenKind {
     Use,         // `use` keyword
     Enum,        // `enum` keyword
     Struct,      // `struct` keywword
-    Let,         // `let` keyword
+    Val,         // `val` keyword
+    Var,         // `var` keyword
     If,          // `if` keyword
     Else,        // `else` keyword
     Fun,         // `fun` keyword

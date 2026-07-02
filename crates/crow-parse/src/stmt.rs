@@ -10,15 +10,11 @@ use crow_lex::token::TokenKind;
 /// Implementation
 impl<'s> Parser<'s> {
     /// Let statement parsing
-    fn let_stmt(&mut self) -> Stmt {
+    fn variable_stmt(&mut self, is_mutable: bool) -> Stmt {
         // Bumping `let`
         let start_span = self.peek().span.clone();
         self.bump();
-        let name = if self.check(TokenKind::Wildcard) {
-            self.bump().lexeme
-        } else {
-            self.expect(TokenKind::Id).lexeme
-        };
+        let name = self.expect(TokenKind::Id).lexeme;
 
         // Parsing hint
         let hint = if self.check(TokenKind::Colon) {
@@ -35,7 +31,7 @@ impl<'s> Parser<'s> {
 
         Stmt {
             span: start_span + end_span,
-            kind: StmtKind::Let(name, hint, expr),
+            kind: StmtKind::Variable(name, hint, expr, is_mutable),
         }
     }
 
@@ -49,10 +45,28 @@ impl<'s> Parser<'s> {
         }
     }
 
+    fn wildcard_assign(&mut self) -> Stmt {
+        // Bumping `_`
+        let start_span = self.peek().span.clone();
+        self.bump();
+
+        // Parsing rhs
+        self.expect(TokenKind::Eq);
+        let expr = self.expr();
+        let end_span = self.prev().span.clone();
+
+        Stmt {
+            span: start_span.clone() + end_span,
+            kind: StmtKind::WildcardAssign(TypeHint::Unit(start_span), expr),
+        }
+    }
+
     /// Statement parsing
     fn stmt(&mut self) -> Stmt {
         match self.peek().kind {
-            TokenKind::Let => self.let_stmt(),
+            TokenKind::Wildcard => self.wildcard_assign(),
+            TokenKind::Val => self.variable_stmt(false),
+            TokenKind::Var => self.variable_stmt(true),
             _ => self.expr_stmt(),
         }
     }

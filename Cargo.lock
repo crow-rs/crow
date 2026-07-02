@@ -128,6 +128,7 @@ dependencies = [
  "crow-ast",
  "crow-hir",
  "crow-lex",
+ "crow-lint",
  "crow-lower-hir",
  "crow-macros",
  "crow-parse",
@@ -163,6 +164,18 @@ name = "crow-lex"
 version = "0.1.0"
 dependencies = [
  "crow-macros",
+ "miette",
+ "thiserror",
+]
+
+[[package]]
+name = "crow-lint"
+version = "0.1.0"
+dependencies = [
+ "crow-hir",
+ "crow-lex",
+ "crow-resolving",
+ "crow-tycheck",
  "miette",
  "thiserror",
 ]

@@ -432,13 +432,17 @@ impl Resolver {
     /// Resolves statement
     fn resolve_stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
-            StmtKind::Let(name, hint, value) => {
+            StmtKind::Variable(name, hint, value, _) => {
                 self.resolve_expr(value);
                 self.resolve_type_hint(hint);
                 self.define_local(name, stmt.span.clone());
             }
             StmtKind::Expr(expr) => {
                 self.resolve_expr(expr);
+            }
+            StmtKind::WildcardAssign(hint, value) => {
+                self.resolve_type_hint(hint);
+                self.resolve_expr(value);
             }
         }
     }

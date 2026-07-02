@@ -13,6 +13,7 @@ crow-resolving ={ path = "../crow-resolving"}
 crow-hir ={ path = "../crow-hir"}
 crow-lower-hir ={ path = "../crow-lower-hir"}
 crow-tycheck ={ path = "../crow-tycheck"}
+crow-lint ={ path = "../crow-lint"}
 miette = { git = "https://github.com/crow-rs/miette", features = ["fancy"] }
 tracing = "0.1.44"
 petgraph = "0.8.3"

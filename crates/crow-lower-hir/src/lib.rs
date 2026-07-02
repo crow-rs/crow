@@ -215,7 +215,7 @@ impl LoweringCtxt {
         // Lowering statement
         match &stmt.kind {
             // Linking resolution with statement for let binding
-            StmtKind::Let(name, hint, value) => {
+            StmtKind::Variable(name, hint, value, mutability) => {
                 let init_id = self.lower_expr(value);
                 let ty = self.lower_type_hint(hint);
 
@@ -232,11 +232,12 @@ impl LoweringCtxt {
 
                 self.alloc_stmt(
                     span,
-                    HirStmtKind::Let {
+                    HirStmtKind::Variable {
                         local_id,
                         name: name.clone(),
                         ty,
                         init: init_id,
+                        mutable: *mutability
                     },
                 )
             }
@@ -244,6 +245,18 @@ impl LoweringCtxt {
             StmtKind::Expr(expr) => {
                 let expr_id = self.lower_expr(expr);
                 self.alloc_stmt(span, HirStmtKind::Expr(expr_id))
+            },
+
+            StmtKind::WildcardAssign(hint, rhs) => {
+                let ty = self.lower_type_hint(hint);
+                let init_id = self.lower_expr(rhs);
+                self.alloc_stmt(
+                    span,
+                    HirStmtKind::WildcardAssign {
+                        ty,
+                        init: init_id
+                    }
+                )
             }
         }
     }

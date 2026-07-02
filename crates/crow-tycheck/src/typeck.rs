@@ -5,7 +5,7 @@ use crate::ty::*;
 use crow_ast::atom::{BinOp, Lit, UnOp};
 use crow_hir::Hir;
 use crow_hir::body::HirBody;
-use crow_hir::expr::{HirArm, HirExprKind};
+use crow_hir::expr::{HirExprKind};
 use crow_hir::id::{ExprId, PatId, StmtId};
 use crow_hir::item::{HirConstDef, HirFnDef, HirItemKind};
 use crow_hir::pat::HirPatKind;
@@ -292,7 +292,7 @@ impl<'hir> TypeChecker<'hir> {
     fn check_stmt(&mut self, body: &HirBody, stmt_id: StmtId) -> Ty {
         let stmt = body.stmt(stmt_id);
         match &stmt.kind {
-            HirStmtKind::Let {
+            HirStmtKind::Variable {
                 local_id, ty, init, ..
             } => {
                 let hint_ty = self.lower_hir_ty(ty);
@@ -304,6 +304,11 @@ impl<'hir> TypeChecker<'hir> {
             HirStmtKind::Expr(expr_id) => {
                 let ty = self.check_expr(body, *expr_id);
                 ty
+            }
+            HirStmtKind::WildcardAssign { init, ..} => {
+                self.check_expr(body, *init);
+                //achive - Thank you for actually checking return values! You're a good coder!
+                Ty::Unit
             }
         }
     }

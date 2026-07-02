@@ -3,7 +3,7 @@ members = [
     "crates/crow-ast", 
     "crates/crow-cli",
     "crates/crow-driver", "crates/crow-fresh", "crates/crow-hir",
-    "crates/crow-lex", "crates/crow-lower-hir",
+    "crates/crow-lex", "crates/crow-lint", "crates/crow-lower-hir",
     "crates/crow-macros",
     "crates/crow-parse", "crates/crow-resolving", "crates/crow-tycheck",
 ]

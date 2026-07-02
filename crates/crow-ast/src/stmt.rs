@@ -5,8 +5,10 @@ use crow_lex::token::Span;
 /// Defines statement kind
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum StmtKind {
-    /// Let definition
-    Let(String, TypeHint, Expr),
+    /// Var definition
+    Variable(String, TypeHint, Expr, bool), //last param - immutability, true - mutable, false immutable
+
+    WildcardAssign(TypeHint, Expr),
 
     /// An expression
     Expr(Expr),

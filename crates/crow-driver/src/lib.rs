@@ -7,6 +7,7 @@ use crate::errors::DriverError;
 use camino::Utf8PathBuf;
 use crow_ast::item;
 use crow_lex::Lexer;
+use crow_lint::run_lints;
 use crow_lower_hir::lower_module;
 use crow_macros::{bail, bug, emit};
 use crow_parse::Parser;
@@ -233,6 +234,14 @@ impl Driver {
 
                     for err in result.1 {
                         emit!(err)
+                    }
+
+                    info!("linting `{name}`");
+
+                    let warnings = run_lints(&hir, &result.0[0]);
+
+                    for wrn in warnings {
+                        emit!(wrn)
                     }
                 }
                 Err(errors) => {

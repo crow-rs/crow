@@ -14,11 +14,16 @@ pub struct HirStmt {
 /// Defines hir statement knid
 #[derive(Debug, Clone)]
 pub enum HirStmtKind {
-    Let {
+    Variable {
         local_id: LocalId,
         name: String,
         ty: HirTy,
         init: ExprId,
+        mutable: bool
+    },
+    WildcardAssign {
+        ty: HirTy,
+        init: ExprId
     },
     Expr(ExprId),
 }
