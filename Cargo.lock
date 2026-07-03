@@ -138,6 +138,8 @@ dependencies = [
  "crow-lex",
  "crow-lint",
  "crow-lower-hir",
+ "crow-lower-mir",
+ "crow-macros",
  "crow-parse",
  "crow-resolving",
  "crow-tycheck",
@@ -199,6 +201,44 @@ dependencies = [
  "crow-hir",
  "crow-resolving",
  "miette",
+]
+
+[[package]]
+name = "crow-lower-mir"
+version = "0.1.0"
+dependencies = [
+ "crow-ast",
+ "crow-hir",
+ "crow-mir",
+ "crow-resolving",
+ "crow-tycheck",
+]
+
+[[package]]
+name = "crow-macros"
+version = "0.1.0"
+
+[[package]]
+name = "crow-mir"
+version = "0.1.0"
+dependencies = [
+ "crow-resolving",
+ "crow-tycheck",
+]
+
+[[package]]
+name = "crow-mir-monomorph"
+version = "0.1.0"
+dependencies = [
+ "crow-mir",
+ "crow-tycheck",
+]
+
+[[package]]
+name = "crow-mir-passes"
+version = "0.1.0"
+dependencies = [
+ "crow-mir",
 ]
 
 [[package]]

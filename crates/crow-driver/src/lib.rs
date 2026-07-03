@@ -10,6 +10,8 @@ use crow_common::{bail, bug, emit};
 use crow_lex::Lexer;
 use crow_lint::run_lints;
 use crow_lower_hir::lower_module;
+use crow_lower_mir::lower_hir_to_mir;
+use crow_macros::{bail, bug, emit};
 use crow_parse::Parser;
 use crow_resolving::resolver::Resolver;
 use crow_tycheck::typeck::typeck_module;
@@ -242,6 +244,10 @@ impl Driver {
                     for wrn in warnings {
                         emit!(wrn)
                     }
+                    /*let mut prim_tys = HashMap::new();
+
+
+                    let mir = lower_hir_to_mir(&hir, &result.0, prim_tys);*/
                 }
                 Err(errors) => {
                     for err in errors {

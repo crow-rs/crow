@@ -3,7 +3,8 @@ members = [
     "crates/crow-ast",
     "crates/crow-cli", "crates/crow-common",
     "crates/crow-driver", "crates/crow-fresh", "crates/crow-hir",
-    "crates/crow-lex", "crates/crow-lint", "crates/crow-lower-hir",
+    "crates/crow-lex", "crates/crow-lint", "crates/crow-lower-hir", "crates/crow-lower-mir",
+    "crates/crow-macros", "crates/crow-mir", "crates/crow-mir-monomorph", "crates/crow-mir-passes",
     "crates/crow-parse", "crates/crow-resolving", "crates/crow-tycheck",
 ]
 resolver = "3"
