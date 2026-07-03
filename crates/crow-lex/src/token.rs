@@ -1,10 +1,6 @@
 /// Imports
-use miette::NamedSource;
-use std::{
-    fmt::Debug,
-    ops::{Add, Range},
-    sync::Arc,
-};
+use crow_common::span::Span;
+use std::fmt::Debug;
 
 /// Represents token kind
 #[derive(Debug, PartialEq, Copy, Clone, Eq)]
@@ -67,40 +63,6 @@ pub enum TokenKind {
     String,      // "quoted text"
     Id,          // identifier
     Bool,        // bool
-}
-
-/// Represents span
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Span(pub Arc<NamedSource<String>>, pub Range<usize>);
-
-impl Span {
-    pub fn zeroed() -> Self {
-        Self(Arc::new(NamedSource::new(String::from("??"), String::from("??"))), Range::default())
-    }
-}
-
-/// Debug implementation
-impl Debug for Span {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Span").field(&self.1).finish()
-    }
-}
-
-/// Add implementation
-impl Add for Span {
-    type Output = Span;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        // Checking that files are same
-        if self.0 != rhs.0 {
-            panic!("attempt to perform `+` operation on two spans from different files.")
-        }
-
-        // Calculating new span range
-        let start = self.1.start.min(rhs.1.start);
-        let end = self.1.end.max(rhs.1.end);
-        Span(self.0, start..end)
-    }
 }
 
 /// Represents token

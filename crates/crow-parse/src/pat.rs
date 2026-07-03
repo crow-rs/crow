@@ -1,11 +1,11 @@
 /// Imports
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
-    atom::Lit,
+    atom::{Lit, Mutability},
     expr::{Expr, ExprKind, Pat, PatKind},
 };
+use crow_common::bail;
 use crow_lex::token::TokenKind;
-use crow_macros::bail;
 
 /// Patterns parsing implementation
 impl<'s> Parser<'s> {
@@ -95,11 +95,22 @@ impl<'s> Parser<'s> {
                 span: tk.span,
                 kind: PatKind::Wildcard,
             },
-            // Binding pattern
-            TokenKind::Id => Pat {
-                span: tk.span,
-                kind: PatKind::BindTo(tk.lexeme),
-            },
+            // Immutable binding pattern
+            TokenKind::Val => {
+                let binding = self.expect(TokenKind::Id);
+                Pat {
+                    span: tk.span + binding.span,
+                    kind: PatKind::BindTo(Mutability::Immut, tk.lexeme),
+                }
+            }
+            // Mutable binding pattern
+            TokenKind::Var => {
+                let binding = self.expect(TokenKind::Id);
+                Pat {
+                    span: tk.span + binding.span,
+                    kind: PatKind::BindTo(Mutability::Mut, tk.lexeme),
+                }
+            }
             // Variant or unpack pattern
             TokenKind::Dot => self.enum_pat(),
             // Otherwise, bailing error

@@ -6,10 +6,10 @@ mod io;
 use crate::errors::DriverError;
 use camino::Utf8PathBuf;
 use crow_ast::item;
+use crow_common::{bail, bug, emit};
 use crow_lex::Lexer;
 use crow_lint::run_lints;
 use crow_lower_hir::lower_module;
-use crow_macros::{bail, bug, emit};
 use crow_parse::Parser;
 use crow_resolving::resolver::Resolver;
 use crow_tycheck::typeck::typeck_module;
@@ -225,21 +225,20 @@ impl Driver {
             let module = loaded_modules.get(name).unwrap().clone();
             let res = resolver.resolve_ast(&module);
             info!("resolving result: {res:#?}");
-            // Typechecking module
+            // Typechecking and linting module
             match res {
                 Ok(_) => {
+                    // Typechecking module
                     info!("typechecking `{name}`");
                     let hir = lower_module(&module, res.ok().unwrap());
                     let result = typeck_module(&hir);
-
                     for err in result.1 {
                         emit!(err)
                     }
 
+                    // Linting module
                     info!("linting `{name}`");
-
                     let warnings = run_lints(&hir, &result.0[0]);
-
                     for wrn in warnings {
                         emit!(wrn)
                     }

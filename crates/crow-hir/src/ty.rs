@@ -1,5 +1,5 @@
 /// Imports
-use crow_lex::token::Span;
+use crow_common::span::Span;
 use crow_resolving::table::Res;
 
 /// Defines hir type

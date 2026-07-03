@@ -1,6 +1,6 @@
 /// Imports
 use crate::{errors::TyCheckError, ty::*};
-use crow_lex::token::Span;
+use crow_common::span::Span;
 use ena::unify::{InPlace, InPlaceUnificationTable};
 use std::collections::HashMap;
 

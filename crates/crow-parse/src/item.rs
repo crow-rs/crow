@@ -7,8 +7,8 @@ use crow_ast::{
         Variant,
     },
 };
+use crow_common::bail;
 use crow_lex::token::TokenKind;
-use crow_macros::bail;
 
 /// Item parsing implementation
 impl<'s> Parser<'s> {

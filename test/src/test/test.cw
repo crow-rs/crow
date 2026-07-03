@@ -4,7 +4,7 @@ fun meme(a: i8, b: i8) -> i8 {
 
 fun main() -> i8 {
     _ = meme(1, 1)
-    
+
     meme(1, 1)
 
     val a: i8 = meme(1, 2)
@@ -12,6 +12,6 @@ fun main() -> i8 {
     var d = 10
     match a {
         4 -> 20,
-        _ -> 10
+        val b -> 10
     }
 }

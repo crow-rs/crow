@@ -8,7 +8,7 @@ use thiserror::Error;
 #[derive(Error, Diagnostic, Debug)]
 pub enum LinterWarnings {
     #[error("unused result of: `{stmt:?}`")]
-    #[diagnostic(code(linter::unused_result))]
+    #[diagnostic(code(linter::unused_result), severity(warn))]
     UnusedResult {
         stmt: String,
         #[source_code]
@@ -18,7 +18,7 @@ pub enum LinterWarnings {
     },
 
     #[error("unused value: `{val_name:?}`")]
-    #[diagnostic(code(linter::unused_value))]
+    #[diagnostic(code(linter::unused_value), severity(warn))]
     UnusedVariable {
         val_name: String,
         #[source_code]
@@ -28,7 +28,7 @@ pub enum LinterWarnings {
     },
 
     #[error("variable no need to be mutable: `{var_name:?}`")]
-    #[diagnostic(code(linter::unused_mut))]
+    #[diagnostic(code(linter::unused_mut), severity(warn))]
     UnusedMut {
         var_name: String,
         #[source_code]
@@ -38,7 +38,7 @@ pub enum LinterWarnings {
     },
 
     #[error("unreachable code detected")]
-    #[diagnostic(code(linter::unreachable_code))]
+    #[diagnostic(code(linter::unreachable_code), severity(warn))]
     UnreachableCode {
         #[source_code]
         src: Arc<NamedSource<String>>,

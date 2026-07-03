@@ -7,7 +7,7 @@ edition = "2024"
 rayon = "1.12.0"
 crow-parse = { path = "../crow-parse" }
 crow-lex = { path = "../crow-lex" }
-crow-macros = { path = "../crow-macros" }
+crow-common = { path = "../crow-common" }
 crow-ast = { path = "../crow-ast" }
 crow-resolving ={ path = "../crow-resolving"}
 crow-hir ={ path = "../crow-hir"}

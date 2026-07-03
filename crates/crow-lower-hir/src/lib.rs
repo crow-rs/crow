@@ -5,6 +5,7 @@ use crow_ast::{
     item::{Item, ItemKind, Module},
     stmt::{Stmt, StmtKind},
 };
+use crow_common::{bug, span::Span};
 use crow_fresh::FreshenVec;
 use crow_hir::{
     Hir,
@@ -19,8 +20,6 @@ use crow_hir::{
     stmt::{HirStmt, HirStmtKind},
     ty::{HirEffectRow, HirEffects, HirTy, HirTyKind},
 };
-use crow_lex::token::Span;
-use crow_macros::bug;
 use crow_resolving::table::{DefId, LocalId, Res, ResolveTable};
 
 /// Defines lowering context,
@@ -214,8 +213,8 @@ impl LoweringCtxt {
 
         // Lowering statement
         match &stmt.kind {
-            // Linking resolution with statement for let binding
-            StmtKind::Variable(name, hint, value, mutability) => {
+            // Linking resolution with statement for binding
+            StmtKind::Binding(name, hint, mutability, value) => {
                 let init_id = self.lower_expr(value);
                 let ty = self.lower_type_hint(hint);
 
@@ -232,12 +231,12 @@ impl LoweringCtxt {
 
                 self.alloc_stmt(
                     span,
-                    HirStmtKind::Variable {
+                    HirStmtKind::Binding {
                         local_id,
                         name: name.clone(),
                         ty,
                         init: init_id,
-                        mutable: *mutability
+                        mutability: *mutability,
                     },
                 )
             }
@@ -245,17 +244,14 @@ impl LoweringCtxt {
             StmtKind::Expr(expr) => {
                 let expr_id = self.lower_expr(expr);
                 self.alloc_stmt(span, HirStmtKind::Expr(expr_id))
-            },
+            }
 
-            StmtKind::WildcardAssign(hint, rhs) => {
+            StmtKind::Wildcard(hint, rhs) => {
                 let ty = self.lower_type_hint(hint);
                 let init_id = self.lower_expr(rhs);
                 self.alloc_stmt(
                     span,
-                    HirStmtKind::WildcardAssign {
-                        ty,
-                        init: init_id
-                    }
+                    HirStmtKind::Wildcard { ty, init: init_id },
                 )
             }
         }
@@ -283,7 +279,7 @@ impl LoweringCtxt {
             PatKind::Wildcard => {
                 self.alloc_pat(span, HirPatKind::Wildcard)
             }
-            PatKind::BindTo(name) => {
+            PatKind::BindTo(_, name) => {
                 let local_id =
                     match self.resolve.resolutions.get(&pat.span) {
                         Some(Res::Local(lid)) => *lid,

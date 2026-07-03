@@ -6,7 +6,7 @@ use crate::{
     },
 };
 use crow_ast::{
-    atom::TypeHint,
+    atom::{Mutability, TypeHint},
     expr::{Case, Expr, ExprKind, Pat, PatKind},
     item::{
         Const, Enum, Field, Fun, ItemKind, Module, NativeFun, Struct,
@@ -14,14 +14,9 @@ use crow_ast::{
     },
     stmt::{Stmt, StmtKind},
 };
+use crow_common::{bug, span::Span};
 use crow_fresh::Freshen;
-use crow_lex::token::Span;
-use crow_macros::bug;
-use miette::NamedSource;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 /// Defines single rib
 type Rib = HashMap<String, Res>;
@@ -145,11 +140,17 @@ impl Resolver {
     }
 
     /// Defines local in the ribs stack and resolve table
-    fn define_local(&mut self, name: &str, span: Span) -> LocalId {
+    fn define_local(
+        &mut self,
+        name: &str,
+        mutability: Mutability,
+        span: Span,
+    ) -> LocalId {
         let lid = LocalId(self.freshen_locals.fresh());
         self.table.resolutions.insert(span.clone(), Res::Local(lid));
         self.table.local_spans.insert(lid, span);
         self.table.local_names.insert(lid, name.to_string());
+        self.table.local_mutabilities.insert(lid, mutability);
         self.ribs.insert(name.to_string(), Res::Local(lid));
         lid
     }
@@ -354,6 +355,39 @@ impl Resolver {
         }
     }
 
+    /// Ensures local is mutable
+    fn ensure_mutable(&mut self, span: &Span) {
+        match self.table.resolutions.get(&span) {
+            Some(res) => {
+                match res {
+                    Res::Local(lid) => {
+                        if self
+                            .table
+                            .local_mutabilities
+                            .get(lid)
+                            .unwrap_or_else(|| {
+                                bug!(
+                                    "no mutability found for lid `{lid:?}`"
+                                )
+                            })
+                            != &Mutability::Mut
+                        {
+                            self.errors.push(ResolverErrors::ImmutAssign {
+                            name: self.table.local_names.get(lid).unwrap_or_else(|| {
+                                bug!("no name found for lid `{lid:?}`")
+                            }).clone(),
+                            src: span.0.clone(),
+                            span: span.1.clone().into(),
+                        });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None => bug!("no resolution for span {span:?}"),
+        }
+    }
+
     /// Resolves expression
     fn resolve_expr(&mut self, expr: &Expr) {
         match &expr.kind {
@@ -370,6 +404,7 @@ impl Resolver {
             }
             ExprKind::Assign(target, value) => {
                 self.resolve_expr(target);
+                self.ensure_mutable(&target.span);
                 self.resolve_expr(value);
             }
             ExprKind::If(cond, then_, else_) => {
@@ -391,7 +426,11 @@ impl Resolver {
             ExprKind::Function(params, body) => {
                 self.ribs.push();
                 for param in params {
-                    self.define_local(&param.name, param.span.clone());
+                    self.define_local(
+                        &param.name,
+                        Mutability::Immut, // todo: support mutable params
+                        param.span.clone(),
+                    );
                     self.resolve_type_hint(&param.hint);
                 }
                 self.resolve_expr(body);
@@ -432,15 +471,15 @@ impl Resolver {
     /// Resolves statement
     fn resolve_stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
-            StmtKind::Variable(name, hint, value, _) => {
+            StmtKind::Binding(name, hint, mutability, value) => {
                 self.resolve_expr(value);
                 self.resolve_type_hint(hint);
-                self.define_local(name, stmt.span.clone());
+                self.define_local(name, *mutability, stmt.span.clone());
             }
             StmtKind::Expr(expr) => {
                 self.resolve_expr(expr);
             }
-            StmtKind::WildcardAssign(hint, value) => {
+            StmtKind::Wildcard(hint, value) => {
                 self.resolve_type_hint(hint);
                 self.resolve_expr(value);
             }
@@ -452,8 +491,8 @@ impl Resolver {
         match &pat.kind {
             PatKind::Lit(_) => {}
             PatKind::Wildcard => {}
-            PatKind::BindTo(name) => {
-                self.define_local(name, pat.span.clone());
+            PatKind::BindTo(mutability, name) => {
+                self.define_local(name, *mutability, pat.span.clone());
             }
             PatKind::Variant(expr) => {
                 self.resolve_expr(expr);
@@ -539,7 +578,11 @@ impl Resolver {
                 ItemKind::Fun(f) => {
                     self.ribs.push();
                     for param in &f.params {
-                        self.define_local(&param.name, param.span.clone());
+                        self.define_local(
+                            &param.name,
+                            Mutability::Immut, // todo: support mutable params
+                            param.span.clone(),
+                        );
                         self.resolve_type_hint(&param.hint);
                     }
                     self.resolve_type_hint(&f.ret);

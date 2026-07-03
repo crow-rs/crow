@@ -5,7 +5,7 @@ use crate::{
     ty::{HirEffects, HirTy},
 };
 use crow_ast::atom::Publicity;
-use crow_lex::token::Span;
+use crow_common::span::Span;
 use crow_resolving::table::DefId;
 
 /// Defines hir item

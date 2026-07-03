@@ -1,7 +1,7 @@
 /// Imports
 use crate::{id::*, ty::HirTy};
 use crow_ast::atom::{BinOp, Lit, UnOp};
-use crow_lex::token::Span;
+use crow_common::span::Span;
 use crow_resolving::table::{LocalId, Res};
 
 /// Defines hir expression

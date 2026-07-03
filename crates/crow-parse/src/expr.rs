@@ -4,13 +4,13 @@ use crow_ast::{
     atom::{BinOp, Lit, UnOp},
     expr::{Case, Expr, ExprKind},
 };
+use crow_common::bail;
 use crow_lex::token::TokenKind;
-use crow_macros::bail;
 
 /// Exprs parsing implementation
 impl<'s> Parser<'s> {
     /// Group `( expr )` expression parsing
-    fn group(&mut self) -> Expr {
+    fn group_expr(&mut self) -> Expr {
         let start_span = self.peek().span.clone();
         self.expect(TokenKind::Lparen);
         let expr = self.expr();
@@ -229,7 +229,7 @@ impl<'s> Parser<'s> {
         let tk = self.peek().clone();
         match tk.kind {
             // Literals parsing
-            TokenKind::Lparen => self.group(),
+            TokenKind::Lparen => self.group_expr(),
             TokenKind::Number => {
                 self.bump();
                 Expr {

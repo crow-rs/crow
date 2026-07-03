@@ -1,7 +1,7 @@
 /// Imports
 use crate::id::*;
 use crow_ast::atom::Lit;
-use crow_lex::token::Span;
+use crow_common::span::Span;
 use crow_resolving::table::{LocalId, Res};
 
 /// Defines hir pattern

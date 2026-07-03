@@ -3,15 +3,15 @@ use crate::errors::TyCheckError;
 use crate::infer::InferCtxt;
 use crate::ty::*;
 use crow_ast::atom::{BinOp, Lit, UnOp};
+use crow_common::span::Span;
 use crow_hir::Hir;
 use crow_hir::body::HirBody;
-use crow_hir::expr::{HirExprKind};
+use crow_hir::expr::HirExprKind;
 use crow_hir::id::{ExprId, PatId, StmtId};
 use crow_hir::item::{HirConstDef, HirFnDef, HirItemKind};
 use crow_hir::pat::HirPatKind;
 use crow_hir::stmt::HirStmtKind;
 use crow_hir::ty::{HirTy, HirTyKind};
-use crow_lex::token::Span;
 use crow_resolving::table::{DefId, DefKind, LocalId, Res};
 use std::collections::HashMap;
 
@@ -292,7 +292,7 @@ impl<'hir> TypeChecker<'hir> {
     fn check_stmt(&mut self, body: &HirBody, stmt_id: StmtId) -> Ty {
         let stmt = body.stmt(stmt_id);
         match &stmt.kind {
-            HirStmtKind::Variable {
+            HirStmtKind::Binding {
                 local_id, ty, init, ..
             } => {
                 let hint_ty = self.lower_hir_ty(ty);
@@ -305,9 +305,9 @@ impl<'hir> TypeChecker<'hir> {
                 let ty = self.check_expr(body, *expr_id);
                 ty
             }
-            HirStmtKind::WildcardAssign { init, ..} => {
+            HirStmtKind::Wildcard { init, .. } => {
                 self.check_expr(body, *init);
-                //achive - Thank you for actually checking return values! You're a good coder!
+                // achive - Thank you for actually checking return values! You're a good coder!
                 Ty::Unit
             }
         }
@@ -333,6 +333,7 @@ impl<'hir> TypeChecker<'hir> {
                 self.check_bin_op(*op, lhs_ty, rhs_ty, span.clone())
             }
             HirExprKind::Assign(target_id, value_id) => {
+                // todo: check mutability
                 let target_ty = self.check_expr(body, *target_id);
                 let value_ty = self.check_expr(body, *value_id);
                 self.eq(target_ty, value_ty, span.clone());

@@ -1,14 +1,18 @@
 /// Imports
-use crate::{atom::TypeHint, expr::Expr};
-use crow_lex::token::Span;
+use crate::{
+    atom::{Mutability, TypeHint},
+    expr::Expr,
+};
+use crow_common::span::Span;
 
 /// Defines statement kind
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum StmtKind {
-    /// Var definition
-    Variable(String, TypeHint, Expr, bool), //last param - immutability, true - mutable, false immutable
+    /// Variable binding
+    Binding(String, TypeHint, Mutability, Expr),
 
-    WildcardAssign(TypeHint, Expr),
+    /// Wilcard binding
+    Wildcard(TypeHint, Expr),
 
     /// An expression
     Expr(Expr),

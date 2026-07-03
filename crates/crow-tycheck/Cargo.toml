@@ -8,7 +8,7 @@ crow-hir = { path = "../crow-hir" }
 crow-resolving = { path = "../crow-resolving" }
 crow-lex = { path = "../crow-lex" }
 crow-ast = { path = "../crow-ast" }
-crow-macros = {path = "../crow-macros"}
+crow-common = {path = "../crow-common"}
 ena = "0.14.4"
 miette = { git = "https://github.com/crow-rs/miette" }
 thiserror = "2.0.18"

@@ -3,7 +3,7 @@ use crate::{
     atom::{Effects, Param, Publicity, TypeHint},
     expr::Expr,
 };
-use crow_lex::token::Span;
+use crow_common::span::Span;
 use miette::NamedSource;
 use std::sync::Arc;
 

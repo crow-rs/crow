@@ -15,13 +15,22 @@ pub enum ResolverErrors {
         #[label("got undefined name here...")]
         span: SourceSpan,
     },
-    #[error("name `{name:?}` not bound in all alternatives`")]
+    #[error("name `{name:?}` not bound in all alternatives")]
     #[diagnostic(code(resolve::undefined_name))]
     NotBound {
         name: String,
         #[source_code]
         src: Arc<NamedSource<String>>,
         #[label("got unbounded name here...")]
+        span: SourceSpan,
+    },
+    #[error("name `{name:?}` is immutable and can't be assigned")]
+    #[diagnostic(code(resolve::immut_assign))]
+    ImmutAssign {
+        name: String,
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("assign attempt here...")]
         span: SourceSpan,
     },
 }

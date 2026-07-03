@@ -1,6 +1,7 @@
 /// Imports
 use crate::{id::*, ty::HirTy};
-use crow_lex::token::Span;
+use crow_ast::atom::Mutability;
+use crow_common::span::Span;
 use crow_resolving::table::LocalId;
 
 /// Defines hir statement
@@ -14,16 +15,16 @@ pub struct HirStmt {
 /// Defines hir statement knid
 #[derive(Debug, Clone)]
 pub enum HirStmtKind {
-    Variable {
+    Binding {
         local_id: LocalId,
         name: String,
         ty: HirTy,
         init: ExprId,
-        mutable: bool
+        mutability: Mutability,
     },
-    WildcardAssign {
+    Wildcard {
         ty: HirTy,
-        init: ExprId
+        init: ExprId,
     },
     Expr(ExprId),
 }

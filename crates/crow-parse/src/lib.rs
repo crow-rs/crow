@@ -9,11 +9,11 @@ mod stmt;
 /// Imports
 use crate::errors::ParseError;
 use crow_ast::{atom::Publicity, item::Module};
+use crow_common::bail;
 use crow_lex::{
     Lexer,
     token::{Token, TokenKind},
 };
-use crow_macros::bail;
 use miette::NamedSource;
 use std::sync::Arc;
 
@@ -41,7 +41,10 @@ pub struct Parser<'s> {
 /// Implementation
 impl<'s> Parser<'s> {
     /// Creates new parser
-    pub fn new(source: Arc<NamedSource<String>>, mut lexer: Lexer<'s>) -> Self {
+    pub fn new(
+        source: Arc<NamedSource<String>>,
+        mut lexer: Lexer<'s>,
+    ) -> Self {
         let current = lexer.next();
         let next = lexer.next();
         Self {

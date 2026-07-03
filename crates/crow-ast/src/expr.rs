@@ -1,9 +1,9 @@
 /// Imports
 use crate::{
-    atom::{BinOp, Lit, Param, UnOp},
+    atom::{BinOp, Lit, Mutability, Param, UnOp},
     stmt::Stmt,
 };
-use crow_lex::token::Span;
+use crow_common::span::Span;
 
 /// Defines pattern kind
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -18,7 +18,7 @@ pub enum PatKind {
     Unpack(Expr, Vec<Pat>),
 
     /// Represents bind pattern
-    BindTo(String),
+    BindTo(Mutability, String),
 
     /// Represents wildcard pattern
     Wildcard,

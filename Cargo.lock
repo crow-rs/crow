@@ -103,7 +103,7 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 name = "crow-ast"
 version = "0.1.0"
 dependencies = [
- "crow-lex",
+ "crow-common",
  "miette",
 ]
 
@@ -121,16 +121,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "crow-common"
+version = "0.1.0"
+dependencies = [
+ "miette",
+]
+
+[[package]]
 name = "crow-driver"
 version = "0.1.0"
 dependencies = [
  "camino",
  "crow-ast",
+ "crow-common",
  "crow-hir",
  "crow-lex",
  "crow-lint",
  "crow-lower-hir",
- "crow-macros",
  "crow-parse",
  "crow-resolving",
  "crow-tycheck",
@@ -154,8 +161,8 @@ name = "crow-hir"
 version = "0.1.0"
 dependencies = [
  "crow-ast",
+ "crow-common",
  "crow-fresh",
- "crow-lex",
  "crow-resolving",
 ]
 
@@ -163,7 +170,7 @@ dependencies = [
 name = "crow-lex"
 version = "0.1.0"
 dependencies = [
- "crow-macros",
+ "crow-common",
  "miette",
  "thiserror",
 ]
@@ -172,6 +179,8 @@ dependencies = [
 name = "crow-lint"
 version = "0.1.0"
 dependencies = [
+ "crow-ast",
+ "crow-common",
  "crow-hir",
  "crow-lex",
  "crow-resolving",
@@ -185,25 +194,20 @@ name = "crow-lower-hir"
 version = "0.1.0"
 dependencies = [
  "crow-ast",
+ "crow-common",
  "crow-fresh",
  "crow-hir",
- "crow-lex",
- "crow-macros",
  "crow-resolving",
  "miette",
 ]
-
-[[package]]
-name = "crow-macros"
-version = "0.1.0"
 
 [[package]]
 name = "crow-parse"
 version = "0.1.0"
 dependencies = [
  "crow-ast",
+ "crow-common",
  "crow-lex",
- "crow-macros",
  "miette",
  "thiserror",
 ]
@@ -213,9 +217,9 @@ name = "crow-resolving"
 version = "0.1.0"
 dependencies = [
  "crow-ast",
+ "crow-common",
  "crow-fresh",
  "crow-lex",
- "crow-macros",
  "miette",
  "thiserror",
 ]
@@ -225,9 +229,9 @@ name = "crow-tycheck"
 version = "0.1.0"
 dependencies = [
  "crow-ast",
+ "crow-common",
  "crow-hir",
  "crow-lex",
- "crow-macros",
  "crow-resolving",
  "ena",
  "miette",

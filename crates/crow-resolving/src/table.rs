@@ -1,5 +1,6 @@
 /// Imports
-use crow_lex::token::Span;
+use crow_ast::atom::Mutability;
+use crow_common::span::Span;
 use std::collections::HashMap;
 
 /// Definition id
@@ -77,11 +78,14 @@ pub struct ResolveTable {
     /// Variant mapping: (enum def id, name) -> variant def id
     pub variant_by_name: HashMap<(DefId, String), DefId>,
 
-    /// Local spanbs
+    /// Local spans
     pub local_spans: HashMap<LocalId, Span>,
 
     /// Local names
     pub local_names: HashMap<LocalId, String>,
+
+    /// Local mutabilities
+    pub local_mutabilities: HashMap<LocalId, Mutability>,
 
     /// Use resolutions
     pub use_resolutions: HashMap<Span, Vec<(String, DefId)>>,

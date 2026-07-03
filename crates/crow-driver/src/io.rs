@@ -1,6 +1,6 @@
 /// Imports
 use camino::Utf8PathBuf;
-use crow_macros::bail;
+use crow_common::bail;
 use miette::Diagnostic;
 use std::{fs, path::PathBuf};
 use thiserror::Error;
@@ -104,7 +104,8 @@ pub fn collect_sources(path: &Utf8PathBuf) -> Vec<Utf8PathBuf> {
                 }
 
                 // Converting path buf into utf-8 path buf
-                let utf8_path_result = Utf8PathBuf::from_path_buf(path.to_path_buf());
+                let utf8_path_result =
+                    Utf8PathBuf::from_path_buf(path.to_path_buf());
                 match utf8_path_result {
                     Ok(utf8_path) => result.push(utf8_path),
                     Err(_) => bail!(IoError::FailedToConvertPathBuf {

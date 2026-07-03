@@ -1,7 +1,7 @@
 /// Imports
 use crate::Parser;
 use crow_ast::{
-    atom::TypeHint,
+    atom::{Mutability, TypeHint},
     expr::{Expr, ExprKind},
     stmt::{Stmt, StmtKind},
 };
@@ -9,9 +9,9 @@ use crow_lex::token::TokenKind;
 
 /// Implementation
 impl<'s> Parser<'s> {
-    /// Let statement parsing
-    fn variable_stmt(&mut self, is_mutable: bool) -> Stmt {
-        // Bumping `let`
+    /// Binding statement parsing
+    fn binding_stmt(&mut self, mutability: Mutability) -> Stmt {
+        // Bumping `val` or `var`
         let start_span = self.peek().span.clone();
         self.bump();
         let name = self.expect(TokenKind::Id).lexeme;
@@ -31,21 +31,12 @@ impl<'s> Parser<'s> {
 
         Stmt {
             span: start_span + end_span,
-            kind: StmtKind::Variable(name, hint, expr, is_mutable),
+            kind: StmtKind::Binding(name, hint, mutability, expr),
         }
     }
 
-    /// Expression statement parsing
-    fn expr_stmt(&mut self) -> Stmt {
-        let expr = self.expr();
-
-        Stmt {
-            span: expr.span.clone(),
-            kind: StmtKind::Expr(expr),
-        }
-    }
-
-    fn wildcard_assign(&mut self) -> Stmt {
+    /// Wildcard parsing
+    fn wildcard_stmt(&mut self) -> Stmt {
         // Bumping `_`
         let start_span = self.peek().span.clone();
         self.bump();
@@ -57,16 +48,25 @@ impl<'s> Parser<'s> {
 
         Stmt {
             span: start_span.clone() + end_span,
-            kind: StmtKind::WildcardAssign(TypeHint::Unit(start_span), expr),
+            kind: StmtKind::Wildcard(TypeHint::Unit(start_span), expr),
+        }
+    }
+    /// Expression statement parsing
+    fn expr_stmt(&mut self) -> Stmt {
+        let expr = self.expr();
+
+        Stmt {
+            span: expr.span.clone(),
+            kind: StmtKind::Expr(expr),
         }
     }
 
     /// Statement parsing
     fn stmt(&mut self) -> Stmt {
         match self.peek().kind {
-            TokenKind::Wildcard => self.wildcard_assign(),
-            TokenKind::Val => self.variable_stmt(false),
-            TokenKind::Var => self.variable_stmt(true),
+            TokenKind::Wildcard => self.wildcard_stmt(),
+            TokenKind::Val => self.binding_stmt(Mutability::Immut),
+            TokenKind::Var => self.binding_stmt(Mutability::Mut),
             _ => self.expr_stmt(),
         }
     }

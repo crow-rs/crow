@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 crow-hir = { path = "../crow-hir" }
+crow-ast = { path = "../crow-ast" }
 crow-lex = { path = "../crow-lex" }
+crow-common = { path = "../crow-common" }
 crow-resolving = {path = "../crow-resolving"}
 crow-tycheck = {path = "../crow-tycheck"}
 miette = { git = "https://github.com/crow-rs/miette" }

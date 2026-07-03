@@ -1,11 +1,18 @@
 /// Imports
-use crow_lex::token::Span;
+use crow_common::span::Span;
 
 /// Represents item publicity
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Publicity {
     Pub,
     Priv,
+}
+
+/// Represents item mutability
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Mutability {
+    Mut,
+    Immut,
 }
 
 /// Binary operator
