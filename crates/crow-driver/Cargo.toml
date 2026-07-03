@@ -18,6 +18,8 @@ crow-mir ={ path = "../crow-mir"}
 crow-lower-mir ={ path = "../crow-lower-mir"}
 crow-mir-passes ={ path = "../crow-mir-passes"}
 crow-mir-monomorph ={ path = "../crow-mir-monomorph"}
+crow-codegen ={ path = "../crow-codegen"}
+inkwell = { version = "0.5.0", features = ["llvm18-0"] }
 miette = { git = "https://github.com/crow-rs/miette", features = ["fancy"] }
 tracing = "0.1.44"
 petgraph = "0.8.3"

@@ -45,7 +45,6 @@ pub struct Field {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Struct {
     pub name: String,
-    pub generics: Vec<String>,
     pub fields: Vec<Field>,
 }
 
@@ -61,7 +60,6 @@ pub struct Variant {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Enum {
     pub name: String,
-    pub generics: Vec<String>,
     pub variants: Vec<Variant>,
 }
 
@@ -82,7 +80,6 @@ pub struct Fun {
 pub struct NativeFun {
     pub span: Span,
     pub name: String,
-    pub generics: Vec<String>,
     pub params: Vec<Param>,
     pub ret: TypeHint,
     pub body: String,

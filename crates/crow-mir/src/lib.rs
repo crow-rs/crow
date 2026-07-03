@@ -69,13 +69,16 @@ pub struct MirConstDef {
     pub value: Constant,
 }
 
+#[derive(Clone)]
 pub struct MirBody {
     pub name: String,
     pub arg_count: usize,
+    pub type_params: Vec<DefId>,
     pub locals: Vec<LocalDecl>,
     pub blocks: Vec<BasicBlock>,
 }
 
+#[derive(Clone)]
 pub struct LocalDecl {
     pub ty: Ty,
     pub name: Option<String>,
@@ -87,11 +90,13 @@ impl MirBody {
     pub fn ret_ty(&self) -> &Ty { self.local_ty(RETURN_PLACE) }
 }
 
+#[derive(Clone)]
 pub struct BasicBlock {
     pub stmts: Vec<Statement>,
     pub term: Terminator,
 }
 
+#[derive(Clone)]
 pub enum Statement {
     Assign(Place, Rvalue),
     StorageLive(Local),
@@ -159,6 +164,7 @@ impl Operand {
     }
 }
 
+#[derive(Clone)]
 pub enum Rvalue {
     Use(Operand),
     BinaryOp(BinOp, Operand, Operand),
@@ -168,6 +174,7 @@ pub enum Rvalue {
     Cast(CastKind, Operand, Ty),
 }
 
+#[derive(Clone)]
 pub enum AggregateKind {
     Adt { def_id: DefId, variant: u32 },
     Closure { fn_id: FnId, env_def: DefId },
@@ -257,6 +264,7 @@ pub fn subst_ty(ty: &Ty, substs: &Substs) -> Ty {
     }
 }
 
+#[derive(Clone)]
 pub enum Terminator {
     Goto(Block),
 
@@ -300,6 +308,7 @@ impl Terminator {
     }
 }
 
+#[derive(Clone)]
 pub enum AssertMsg {
     DivisionByZero,
     RemainderByZero,

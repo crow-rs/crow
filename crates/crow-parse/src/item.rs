@@ -34,7 +34,6 @@ impl<'s> Parser<'s> {
 
         // Parsing signature
         let name = self.expect(TokenKind::Id).lexeme;
-        let generics = self.generic_params();
 
         // Parsing fields
         let fields = self.sep_by(
@@ -46,7 +45,6 @@ impl<'s> Parser<'s> {
 
         ItemKind::Struct(Struct {
             name,
-            generics,
             fields,
         })
     }
@@ -82,7 +80,6 @@ impl<'s> Parser<'s> {
 
         // Parsing signature
         let name = self.expect(TokenKind::Id).lexeme;
-        let generics = self.generic_params();
 
         // Parsing variants
         let variants = self.sep_by(
@@ -94,7 +91,6 @@ impl<'s> Parser<'s> {
 
         ItemKind::Enum(Enum {
             name,
-            generics,
             variants,
         })
     }

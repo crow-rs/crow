@@ -1,8 +1,7 @@
 /// Imports
 use crate::{
-    errors::ResolverErrors,
-    table::{
-        DefId, DefKind, FieldDef, LocalId, Res, ResolveTable, VariantDef,
+    errors::ResolverErrors, table::{
+        DefId, DefKind, FieldDef, LocalId, Res, ResolveTable, TypeParamDef, VariantDef,
     },
 };
 use crow_ast::{
@@ -293,15 +292,23 @@ impl Resolver {
 
     /// Resolves function
     fn resolve_function(&mut self, span: &Span, f: &Fun) {
-        // Getting fresh def id
         let def_id = DefId(self.freshen_defs.fresh());
 
-        // Updating table
         self.table.def_kinds.insert(def_id, DefKind::Fun);
         self.table.def_spans.insert(def_id, span.clone());
         self.table.def_names.insert(def_id, f.name.clone());
 
-        // Updating top-level
+        for (index, tp) in f.generics.iter().enumerate() {
+            let tp_def_id = DefId(self.freshen_defs.fresh());
+            self.table.def_kinds.insert(tp_def_id, DefKind::TypeParam);
+            self.table.def_names.insert(tp_def_id, tp.clone());
+            self.table.type_params.insert(tp_def_id, TypeParamDef {
+                name: tp.clone(),
+                index: index as u32,
+                parent: def_id, 
+            });
+        }
+
         self.top_level
             .insert(f.name.clone(), Res::Def(DefKind::Fun, def_id));
     }
@@ -579,6 +586,20 @@ impl Resolver {
             match &item.kind {
                 ItemKind::Fun(f) => {
                     self.ribs.push();
+                    let fn_def_id = match self.top_level.get(&f.name) {
+                        Some(Res::Def(_, did)) => *did,
+                        _ => continue,
+                    };
+
+                    let tps: Vec<(String, DefId)> = self.table.type_params.iter()
+                        .filter(|(_, tp)| tp.parent == fn_def_id)
+                        .map(|(did, tp)| (tp.name.clone(), *did))
+                        .collect();
+
+                    for (name, did) in tps {
+                        self.ribs.insert(name, Res::Def(DefKind::TypeParam, did));
+                    }
+
                     for param in &f.params {
                         self.define_local(
                             &param.name,

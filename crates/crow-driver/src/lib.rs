@@ -6,17 +6,19 @@ mod io;
 use crate::errors::DriverError;
 use camino::Utf8PathBuf;
 use crow_ast::item;
+use crow_codegen::codegen_mir_to_llvm;
 use crow_common::{bail, bug, emit};
 use crow_lex::Lexer;
 use crow_lint::run_lints;
 use crow_lower_hir::lower_module;
 use crow_lower_mir::lower_hir_to_mir;
-use crow_mir::{Constant, FnId};
+use crow_mir::{Constant, FnId, MirModule, verify};
 use crow_mir_monomorph::{MonoItem, Monomorph};
 use crow_mir_passes::mir_optimize;
 use crow_parse::Parser;
 use crow_resolving::resolver::Resolver;
 use crow_tycheck::typeck::typeck_module;
+use inkwell::{OptimizationLevel, context::Context, targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple}};
 use miette::NamedSource;
 use petgraph::{Direction, prelude::DiGraphMap};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -223,7 +225,7 @@ impl Driver {
         info!("performing name resolution...");
 
         let mut mono = Monomorph::new();
-
+        let mut mir_test: Option<MirModule> = None;
         let mut resolver = Resolver::new();
         for name in sorted {
             // Resolving module
@@ -261,6 +263,15 @@ impl Driver {
                     }
                     println!("{}", mir);
 
+                    match verify(&mir) {
+                        Err(errs) => {
+                            for err in errs {
+                                println!("{err}")
+                            }
+                        },
+                        _ => ()
+                    }
+
                     let entry_id = mir.functions.iter()
                         .enumerate()
                         .find(|(_, body)| body.name == "main")
@@ -268,6 +279,8 @@ impl Driver {
                         .expect("no `main` function found");
 
                     mono.collect(&mir, entry_id);
+
+                    mir_test = Some(mir);
                 }
                 Err(errors) => {
                     for err in errors {
@@ -287,6 +300,31 @@ impl Driver {
         }
 
         println!("Total monomorphised: {:#?}", items.len());
+        Target::initialize_all(&InitializationConfig::default());
+
+        let triple = TargetMachine::get_default_triple();
+        let cpu_features = TargetMachine::get_host_cpu_features();
+        let cpu_name = TargetMachine::get_host_cpu_name();
+
+        let target = Target::from_triple(&triple).unwrap();
+        let tm = target
+            .create_target_machine(
+                &triple,
+                cpu_name.to_str().unwrap(),
+                cpu_features.to_str().unwrap(),
+                OptimizationLevel::Aggressive,
+                inkwell::targets::RelocMode::PIC,
+                inkwell::targets::CodeModel::Default,
+            )
+            .unwrap();
+        let ctx = Context::create();
+        let llvm_module = codegen_mir_to_llvm(&ctx, &mir_test.unwrap(), &items, "module_name");
+        llvm_module.verify().unwrap();
+        llvm_module
+            .run_passes("default<O3>", &tm, inkwell::passes::PassBuilderOptions::create())
+            .unwrap();
+
+        llvm_module.print_to_stderr();
 
         println!("✨ Done!");
     }

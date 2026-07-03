@@ -20,6 +20,7 @@ pub struct TypeckBodies {
     pub expr_tys: HashMap<ExprId, Ty>,
     pub local_tys: HashMap<LocalId, Ty>,
     pub pat_tys: HashMap<PatId, Ty>,
+    pub expr_substs: HashMap<ExprId, Vec<Ty>>,
 }
 
 /// Typeck results
@@ -33,6 +34,7 @@ pub struct TypeckOutput {
 #[derive(Clone)]
 pub struct FnSig {
     pub params: Vec<Ty>,
+    pub type_params: Vec<(DefId, u32)>,
     pub ret: Ty,
 }
 
@@ -63,6 +65,8 @@ pub struct TypeChecker<'hir> {
     errors: Vec<TyCheckError>,
 
     primitive_tys: HashMap<DefId, Ty>,
+
+    expr_substs: HashMap<ExprId, Vec<Ty>>,
 }
 
 /// Implementation of the type checker
@@ -78,7 +82,8 @@ impl<'hir> TypeChecker<'hir> {
             expr_tys: HashMap::new(),
             pat_tys: HashMap::new(),
             errors: Vec::new(),
-            primitive_tys: HashMap::new()
+            primitive_tys: HashMap::new(),
+            expr_substs: HashMap::new()
         }
     }
 
@@ -117,11 +122,40 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
+    fn subst_ty(&self, ty: &Ty, substs: &[Ty]) -> Ty {
+        match ty {
+            Ty::Param(_, idx) => substs[*idx as usize].clone(),
+            Ty::Adt(did, args) => Ty::Adt(
+                *did,
+                args.iter().map(|t| self.subst_ty(t, substs)).collect(),
+            ),
+            Ty::Fn(params, ret) => Ty::Fn(
+                params.iter().map(|t| self.subst_ty(t, substs)).collect(),
+                Box::new(self.subst_ty(ret, substs)),
+            ),
+            other => other.clone(),
+        }
+    }
+
+    fn instantiate_sig(&mut self, sig: &FnSig) -> (Vec<Ty>, Ty, Vec<Ty>) {
+        let substs: Vec<Ty> = sig.type_params.iter()
+            .map(|_| self.icx.fresh_var())
+            .collect();
+        let params = sig.params.iter()
+            .map(|ty| self.subst_ty(ty, &substs))
+            .collect();
+        let ret = self.subst_ty(&sig.ret, &substs);
+        (params, ret, substs)
+    }
+
     /// Early pass: collects all the signatures
     fn early_pass(&mut self) {
         for item in self.hir.items.vec() {
             match &item.kind {
                 HirItemKind::Fun(f) => {
+                    let type_params: Vec<(DefId, u32)> = f.type_params.iter()
+                        .map(|tp| (tp.def_id, tp.idx))
+                        .collect();
                     let params: Vec<Ty> = f
                         .params
                         .iter()
@@ -129,7 +163,7 @@ impl<'hir> TypeChecker<'hir> {
                         .collect();
                     let ret = self.lower_hir_ty(&f.ret);
                     self.fn_sigs
-                        .insert(item.def_id, FnSig { params, ret });
+                        .insert(item.def_id, FnSig { type_params, params, ret });
                 }
                 HirItemKind::Native(n) => {
                     let params: Vec<Ty> = n
@@ -139,7 +173,7 @@ impl<'hir> TypeChecker<'hir> {
                         .collect();
                     let ret = self.lower_hir_ty(&n.ret);
                     self.fn_sigs
-                        .insert(item.def_id, FnSig { params, ret });
+                        .insert(item.def_id, FnSig { type_params: vec![], params, ret });
                 }
                 HirItemKind::Const(c) => {
                     let ty = self.lower_hir_ty(&c.ty);
@@ -175,6 +209,11 @@ impl<'hir> TypeChecker<'hir> {
     /// Lowers hir type
     fn lower_hir_ty(&mut self, hir_ty: &HirTy) -> Ty {
         match &hir_ty.kind {
+             HirTyKind::Res { res: Res::Def(DefKind::TypeParam, did), .. } => {
+                let tp = self.hir.resolve.type_params.get(did)
+                    .expect("unknown type param");
+                Ty::Param(*did, tp.index)
+            }
             HirTyKind::Res { res, args } => self.resolve_type(res, args),
             HirTyKind::Fn { params, ret, .. } => {
                 let param_tys: Vec<Ty> =
@@ -231,6 +270,7 @@ impl<'hir> TypeChecker<'hir> {
         self.locals.clear();
         self.expr_tys.clear();
         self.pat_tys.clear();
+        self.expr_substs.clear();
 
         // Getting signature
         let sig = match self.fn_sigs.get(&def_id) {
@@ -297,11 +337,17 @@ impl<'hir> TypeChecker<'hir> {
         for ty in self.pat_tys.values_mut() {
             *ty = self.icx.fallback(ty.clone());
         }
+        for substs in self.expr_substs.values_mut() {
+            for ty in substs.iter_mut() {
+                *ty = self.icx.fallback(ty.clone());
+            }
+        }
 
         TypeckBodies {
             expr_tys: std::mem::take(&mut self.expr_tys),
             local_tys: std::mem::take(&mut self.locals),
             pat_tys: std::mem::take(&mut self.pat_tys),
+            expr_substs: std::mem::take(&mut self.expr_substs),
         }
     }
 
@@ -311,6 +357,7 @@ impl<'hir> TypeChecker<'hir> {
             expr_tys: HashMap::new(),
             local_tys: HashMap::new(),
             pat_tys: HashMap::new(),
+            expr_substs: HashMap::new()
         }
     }
 
@@ -348,7 +395,7 @@ impl<'hir> TypeChecker<'hir> {
         // Inferring expression type
         let ty = match &expr.kind {
             HirExprKind::Lit(lit) => self.infer_lit(lit),
-            HirExprKind::Var(res) => self.infer_var(res),
+            HirExprKind::Var(res) => self.infer_var(res, expr_id),
             HirExprKind::Unary(inner_id, op) => {
                 let inner_ty = self.check_expr(body, *inner_id);
                 self.check_unary_op(*op, inner_ty, span.clone())
@@ -537,17 +584,22 @@ impl<'hir> TypeChecker<'hir> {
     }
 
     /// Infers variable
-    fn infer_var(&mut self, res: &Res) -> Ty {
+    fn infer_var(&mut self, res: &Res, expr_id: ExprId) -> Ty {
         match res {
             Res::Local(lid) => {
                 self.locals.get(lid).cloned().unwrap_or(Ty::Error)
             }
             Res::Def(DefKind::Fun | DefKind::NativeFun, def_id) => {
-                match self.fn_sigs.get(def_id) {
-                    Some(sig) => Ty::Fn(
-                        sig.params.clone(),
-                        Box::new(sig.ret.clone()),
-                    ),
+                match self.fn_sigs.get(def_id).cloned() {
+                    Some(sig) => {
+                        if sig.type_params.is_empty() {
+                            Ty::Fn(sig.params, Box::new(sig.ret))
+                        } else {
+                            let (params, ret, substs) = self.instantiate_sig(&sig);
+                            self.expr_substs.insert(expr_id, substs);
+                            Ty::Fn(params, Box::new(ret))
+                        }
+                    }
                     None => Ty::Error,
                 }
             }

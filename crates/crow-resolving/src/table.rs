@@ -22,6 +22,7 @@ pub enum DefKind {
     Const,
     Module,
     BuiltinType,
+    TypeParam
 }
 
 /// Defines resolution
@@ -52,6 +53,14 @@ pub struct VariantDef {
     pub index: u32,
     pub parent: DefId,
     pub arity: usize,
+}
+
+/// Generic variant definition
+#[derive(Debug, Clone)]
+pub struct TypeParamDef {
+    pub name: String,
+    pub index: u32,        
+    pub parent: DefId,       
 }
 
 /// Resolve table
@@ -95,4 +104,7 @@ pub struct ResolveTable {
 
     /// Modules mapping: module name -> def id
     pub module_by_name: HashMap<String, DefId>,
+
+    //generics
+    pub type_params: HashMap<DefId, TypeParamDef>,
 }

@@ -2,14 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crow_ast::atom::{BinOp as AstBinOp, Lit, Mutability, UnOp as AstUnOp};
 use crow_hir::{
-    body::HirBody,
-    expr::{DivergeKind, HirArm, HirExprKind, HirParam},
-    id::*,
-    item::{HirEnumDef, HirItemKind, HirStructDef},
-    pat::HirPatKind,
-    stmt::HirStmtKind,
-    ty::{HirTy, HirTyKind},
-    Hir,
+    Hir, body::HirBody, expr::{DivergeKind, HirArm, HirExprKind, HirParam}, id::*, item::{HirEnumDef, HirGenericParam, HirItemKind, HirStructDef}, pat::HirPatKind, stmt::HirStmtKind, ty::{HirTy, HirTyKind},
 };
 use crow_mir::{
     AdtDef, AggregateKind, BasicBlock, BinOp, Block, Constant, ConstId,
@@ -110,6 +103,7 @@ impl<'hir> LoweringCtxt<'hir> {
                     self.mir_functions.push(MirBody {
                         name: f.name.clone(),
                         arg_count: f.params.len(),
+                        type_params: f.type_params.iter().map(|tp| tp.def_id).collect(),
                         locals: Vec::new(),
                         blocks: Vec::new(),
                     });
@@ -189,22 +183,22 @@ impl<'hir> LoweringCtxt<'hir> {
     }
 
     fn lower_all_bodies(&mut self) {
-        let fn_items: Vec<(usize, BodyId, Vec<HirParam>)> = self.hir.items.vec()
+        let fn_items: Vec<(usize, BodyId, Vec<HirParam>, Vec<HirGenericParam>)> = self.hir.items.vec()
             .iter()
             .filter_map(|item| {
                 if let HirItemKind::Fun(f) = &item.kind {
                     let fn_id = self.fn_map[&item.def_id];
-                    Some((fn_id.index(), f.body, f.params.clone()))
+                    Some((fn_id.index(), f.body, f.params.clone(), f.type_params.clone()))
                 } else {
                     None
                 }
             })
             .collect();
 
-        for (idx, body_id, params) in fn_items {
+        for (idx, body_id, params, type_params) in fn_items {
             let body = self.hir.body(body_id);
             let tc = &self.typeck.bodies[body_id.0 as usize];
-            let mir_body = self.lower_fn_body(body, tc, &params);
+            let mir_body = self.lower_fn_body(body, tc, &params, &type_params);
             self.mir_functions[idx] = mir_body;
         }
 
@@ -234,25 +228,24 @@ impl<'hir> LoweringCtxt<'hir> {
         hir_body: &HirBody,
         tc: &TypeckBodies,
         params: &[HirParam],
+        type_params: &[HirGenericParam],
     ) -> MirBody {
         let mut bb = BodyBuilder::new(self, hir_body, tc);
         let ret_ty = bb.expr_ty(hir_body.root_expr);
         bb.new_local(ret_ty, None, Mutability::Immut);
-
         for p in params {
             let ty = bb.local_ty(p.local_id);
             let local = bb.new_local(ty, Some(p.name.clone()), Mutability::Immut);
             bb.local_map.insert(p.local_id, local);
         }
         let arg_count = params.len();
-
         bb.start_block();
         bb.lower_expr(hir_body.root_expr, Place::local(RETURN_PLACE));
         bb.terminate(Terminator::Return);
-
         MirBody {
             name: self.fn_name_for_body(hir_body),
             arg_count,
+            type_params: type_params.iter().map(|tp| tp.def_id).collect(),
             locals: bb.locals,
             blocks: bb.blocks,
         }
@@ -273,6 +266,7 @@ impl<'hir> LoweringCtxt<'hir> {
         MirBody {
             name: name.to_string(),
             arg_count: 0,
+            type_params: vec![],
             locals: bb.locals,
             blocks: bb.blocks,
         }
@@ -425,7 +419,11 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
             Res::Def(_, did) => match self.lcx.def_kinds.get(did) {
                 Some(DefKind::Fn) => {
                     let fn_id = self.lcx.fn_map[did];
-                    Operand::Const(Constant::Fn(fn_id, vec![]))
+                    let substs = self.tc.expr_substs 
+                        .get(&expr_id)
+                        .cloned()
+                        .unwrap_or_default();
+                    Operand::Const(Constant::Fn(fn_id, substs))
                 }
                 Some(DefKind::Native) => {
                     let nid = self.lcx.native_map[did];

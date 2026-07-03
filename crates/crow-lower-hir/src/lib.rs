@@ -8,17 +8,9 @@ use crow_ast::{
 use crow_common::{bug, span::Span};
 use crow_fresh::FreshenVec;
 use crow_hir::{
-    Hir,
-    body::HirBody,
-    expr::{DivergeKind, HirArm, HirExpr, HirExprKind, HirParam},
-    id::{BodyId, ExprId, ItemId, PatId, StmtId},
-    item::{
-        HirConstDef, HirEnumDef, HirFieldDef, HirFnDef, HirItem,
-        HirItemKind, HirNativeFnDef, HirStructDef, HirVariantDef,
-    },
-    pat::{HirPat, HirPatKind},
-    stmt::{HirStmt, HirStmtKind},
-    ty::{HirEffectRow, HirEffects, HirTy, HirTyKind},
+    Hir, body::HirBody, expr::{DivergeKind, HirArm, HirExpr, HirExprKind, HirParam}, id::{BodyId, ExprId, ItemId, PatId, StmtId}, item::{
+        HirConstDef, HirEnumDef, HirFieldDef, HirFnDef, HirGenericParam, HirItem, HirItemKind, HirNativeFnDef, HirStructDef, HirVariantDef,
+    }, pat::{HirPat, HirPatKind}, stmt::{HirStmt, HirStmtKind}, ty::{HirEffectRow, HirEffects, HirTy, HirTyKind},
 };
 use crow_resolving::table::{DefId, LocalId, Res, ResolveTable};
 
@@ -467,6 +459,21 @@ impl LoweringCtxt {
         }))
     }
 
+    fn translate_generics(&self, fn_def_id: DefId, params: &[String]) -> Vec<HirGenericParam> {
+        params.iter().enumerate().map(|(i, name)| {
+            let def_id = self.resolve.type_params.iter()
+                .find(|(_, tp)| tp.parent == fn_def_id && tp.name == *name)
+                .map(|(did, _)| *did)
+                .unwrap_or_else(|| panic!("unresolved type param `{name}`"));
+
+            HirGenericParam {
+                def_id,
+                name: name.clone(),
+                idx: i as u32,
+            }
+        }).collect()
+    }
+
     /// Lowers item
     fn lower_item(&mut self, item: &Item) -> ItemId {
         // Getting publicity and span
@@ -537,6 +544,7 @@ impl LoweringCtxt {
                 let ret = self.lower_type_hint(&f.ret);
                 let effects = self.lower_effects(&f.effects);
                 let body_id = self.lower_body(&f.block);
+                let type_params = self.translate_generics(def_id, &f.generics);
 
                 (
                     def_id,
@@ -544,6 +552,7 @@ impl LoweringCtxt {
                         name: f.name.clone(),
                         params,
                         effects,
+                        type_params,
                         ret,
                         body: body_id,
                     }),

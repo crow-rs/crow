@@ -18,6 +18,14 @@ pub struct HirItem {
     pub kind: HirItemKind,
 }
 
+/// Defines hir item
+#[derive(Debug, Clone)]
+pub struct HirGenericParam {
+    pub def_id: DefId,
+    pub name: String,
+    pub idx: u32
+}
+
 /// Defines hir item kind
 #[derive(Debug, Clone)]
 pub enum HirItemKind {
@@ -67,6 +75,7 @@ pub struct HirFnDef {
     pub name: String,
     pub params: Vec<HirParam>,
     pub effects: HirEffects,
+    pub type_params: Vec<HirGenericParam>,
     pub ret: HirTy,
     pub body: BodyId,
 }
