@@ -139,7 +139,9 @@ dependencies = [
  "crow-lint",
  "crow-lower-hir",
  "crow-lower-mir",
- "crow-macros",
+ "crow-mir",
+ "crow-mir-monomorph",
+ "crow-mir-passes",
  "crow-parse",
  "crow-resolving",
  "crow-tycheck",
@@ -215,13 +217,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "crow-macros"
-version = "0.1.0"
-
-[[package]]
 name = "crow-mir"
 version = "0.1.0"
 dependencies = [
+ "crow-ast",
  "crow-resolving",
  "crow-tycheck",
 ]

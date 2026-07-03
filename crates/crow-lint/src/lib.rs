@@ -9,7 +9,7 @@ use crow_hir::{
     pat::{HirPat, HirPatKind},
     stmt::{HirStmt, HirStmtKind},
 };
-use crow_tycheck::typeck::TypeckResults;
+use crow_tycheck::{ty::Ty, typeck::{TypeckBodies, TypeckOutput}};
 
 pub mod warnings;
 
@@ -22,9 +22,10 @@ pub enum LintId {
 }
 
 pub struct LintCtxt<'hir> {
-    pub hir_types: &'hir TypeckResults,
+    pub hir_types: &'hir TypeckOutput,
     pub diags: Vec<LinterWarnings>,
     pub body: &'hir HirBody,
+    pub hir: &'hir Hir,
 }
 
 impl<'hir> LintCtxt<'hir> {
@@ -40,6 +41,29 @@ impl<'hir> LintCtxt<'hir> {
     }
     pub fn pat(&self, id: PatId) -> &'hir HirPat {
         self.body.pat(id)
+    }
+}
+
+impl<'hir> LintCtxt<'hir> {
+    pub fn expr_ty(&self, id: ExprId) -> Option<&Ty> {
+        self.hir_types.bodies[self.body.id.0 as usize]
+            .expr_tys.get(&id)
+    }
+
+    pub fn fn_name(&self, callee_id: ExprId) -> String {
+        let callee = self.expr(callee_id);
+        if let HirExprKind::Var(Res::Def(_, did)) = &callee.kind {
+            for item in self.hir.items.vec() {
+                if item.def_id == *did {
+                    return match &item.kind {
+                        HirItemKind::Fun(f) => f.name.clone(),
+                        HirItemKind::Native(n) => n.name.clone(),
+                        _ => format!("def#{}", did.0),
+                    };
+                }
+            }
+        }
+        "<expr>".to_string()
     }
 }
 
@@ -77,7 +101,7 @@ impl LintDriver {
     pub fn run(
         mut self,
         hir: &Hir,
-        tycx: &TypeckResults,
+        tycx: &TypeckOutput,
     ) -> Vec<LinterWarnings> {
         for item in hir.items.vec() {
             self.visit_item(hir, item, tycx);
@@ -89,7 +113,7 @@ impl LintDriver {
         &mut self,
         hir: &Hir,
         item: &HirItem,
-        tycx: &TypeckResults,
+        tycx: &TypeckOutput,
     ) {
         let body_id = match &item.kind {
             HirItemKind::Fun(f) => Some(f.body),
@@ -105,6 +129,7 @@ impl LintDriver {
                 diags: Vec::new(),
                 body,
                 hir_types: tycx,
+                hir: hir
             };
 
             for p in &mut self.passes {
@@ -233,17 +258,15 @@ impl LintDriver {
 pub struct UnusedResultLint;
 
 impl LintPass for UnusedResultLint {
-    fn id(&self) -> LintId {
-        LintId::UnusedResult
-    }
+    fn id(&self) -> LintId { LintId::UnusedResult }
 
     fn enter_stmt(&mut self, cx: &mut LintCtxt, stmt: &HirStmt) {
         if let HirStmtKind::Expr(eid) = &stmt.kind {
             let expr = cx.expr(*eid);
-            if matches!(expr.kind, HirExprKind::Call(id, ..)) {
-                //let name = //todo - normal name
+            if let HirExprKind::Call(callee_id, _) = &expr.kind {
+                if cx.expr_ty(*eid).is_some_and(|ty| *ty == Ty::Unit) { return; }
                 cx.warn(LinterWarnings::UnusedResult {
-                    stmt: format!("{:?}", expr),
+                    stmt: cx.fn_name(*callee_id),
                     src: stmt.span.0.clone().into(),
                     span: stmt.span.1.clone().into(),
                 });
@@ -252,7 +275,7 @@ impl LintPass for UnusedResultLint {
     }
 }
 
-use crow_resolving::table::LocalId;
+use crow_resolving::table::{LocalId, Res};
 use std::collections::{HashMap, HashSet};
 
 use crate::warnings::LinterWarnings;
@@ -412,7 +435,7 @@ impl LintPass for UnusedMutLint {
     }
 }
 
-pub fn run_lints(hir: &Hir, tycx: &TypeckResults) -> Vec<LinterWarnings> {
+pub fn run_lints(hir: &Hir, tycx: &TypeckOutput) -> Vec<LinterWarnings> {
     let passes: Vec<Box<dyn LintPass>> = vec![
         Box::new(UnusedResultLint),
         Box::new(UnusedVariableLint::new()),

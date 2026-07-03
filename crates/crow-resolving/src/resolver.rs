@@ -16,8 +16,6 @@ use crow_ast::{
 };
 use crow_common::{bug, span::Span};
 use crow_fresh::Freshen;
-use crow_lex::token::Span;
-use crow_macros::bug;
 use std::{
     collections::{HashMap, HashSet},
 };

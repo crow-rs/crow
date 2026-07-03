@@ -15,11 +15,18 @@ use crow_hir::ty::{HirTy, HirTyKind};
 use crow_resolving::table::{DefId, DefKind, LocalId, Res};
 use std::collections::HashMap;
 
-/// Typeck results
-pub struct TypeckResults {
+/// Typeck bodies
+pub struct TypeckBodies {
     pub expr_tys: HashMap<ExprId, Ty>,
     pub local_tys: HashMap<LocalId, Ty>,
     pub pat_tys: HashMap<PatId, Ty>,
+}
+
+/// Typeck results
+pub struct TypeckOutput {
+    pub bodies: Vec<TypeckBodies>,
+    pub prim_tys: HashMap<DefId, Ty>,
+    //pub adt_field_tys: HashMap<DefId, Vec<Vec<Ty>>>,
 }
 
 /// Function signature
@@ -54,6 +61,8 @@ pub struct TypeChecker<'hir> {
 
     // Type check errors
     errors: Vec<TyCheckError>,
+
+    primitive_tys: HashMap<DefId, Ty>,
 }
 
 /// Implementation of the type checker
@@ -69,6 +78,7 @@ impl<'hir> TypeChecker<'hir> {
             expr_tys: HashMap::new(),
             pat_tys: HashMap::new(),
             errors: Vec::new(),
+            primitive_tys: HashMap::new()
         }
     }
 
@@ -78,14 +88,33 @@ impl<'hir> TypeChecker<'hir> {
             self.errors.push(kind);
         }
     }
+    
+    fn define_local_types(&mut self) {
+        for item_kind in &self.hir.resolve.def_kinds {
+            if matches!(item_kind.1, DefKind::BuiltinType) {
+                let item_name = self.hir.resolve.def_names.get(item_kind.0).unwrap();
+                let ty = self.resolve_builtin_types_by_name(item_name);
+                self.primitive_tys.insert(item_kind.0.clone(), ty);
+            }
+        }
+    }
 
     /// Checks module
-    pub fn check_module(&mut self) -> Vec<TypeckResults> {
+    pub fn check_module(&mut self) -> TypeckOutput {
+        //transform primitive types to types for ty_sys
+        self.define_local_types();
+
         // Collecting signatures
         self.early_pass();
 
         // Checking bodies
-        self.late_pass()
+        let bodies = self.late_pass();
+
+        TypeckOutput { 
+            bodies, 
+            prim_tys: self.primitive_tys.clone()
+            //adt_field_tys: () 
+        }
     }
 
     /// Early pass: collects all the signatures
@@ -122,7 +151,7 @@ impl<'hir> TypeChecker<'hir> {
     }
 
     /// Late pass: check all the bodies
-    fn late_pass(&mut self) -> Vec<TypeckResults> {
+    fn late_pass(&mut self) -> Vec<TypeckBodies> {
         // Preparing results
         let mut results = Vec::new();
 
@@ -158,33 +187,30 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
+    fn resolve_builtin_types_by_name(&self, name: &str) -> Ty {
+        match name {
+            "i8" => Ty::Int(IntTy::I8),
+            "i16" => Ty::Int(IntTy::I16),
+            "i32" => Ty::Int(IntTy::I32),
+            "i64" => Ty::Int(IntTy::I64),
+            "u8" => Ty::Int(IntTy::U8),
+            "u16" => Ty::Int(IntTy::U16),
+            "u32" => Ty::Int(IntTy::U32),
+            "u64" => Ty::Int(IntTy::U64),
+            "f32" => Ty::Float(FloatTy::F32),
+            "f64" => Ty::Float(FloatTy::F64),
+            "bool" => Ty::Bool,
+            "string" => Ty::String,
+            "unit" => Ty::Unit,
+            _ => Ty::Error,
+        }
+    }
+
     /// Resolves resolution type
     fn resolve_type(&mut self, res: &Res, args: &[HirTy]) -> Ty {
         match res {
             Res::Def(DefKind::BuiltinType, def_id) => {
-                let name = self
-                    .hir
-                    .resolve
-                    .def_names
-                    .get(def_id)
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
-                match name {
-                    "i8" => Ty::Int(IntTy::I8),
-                    "i16" => Ty::Int(IntTy::I16),
-                    "i32" => Ty::Int(IntTy::I32),
-                    "i64" => Ty::Int(IntTy::I64),
-                    "u8" => Ty::Int(IntTy::U8),
-                    "u16" => Ty::Int(IntTy::U16),
-                    "u32" => Ty::Int(IntTy::U32),
-                    "u64" => Ty::Int(IntTy::U64),
-                    "f32" => Ty::Float(FloatTy::F32),
-                    "f64" => Ty::Float(FloatTy::F64),
-                    "bool" => Ty::Bool,
-                    "string" => Ty::String,
-                    "unit" => Ty::Unit,
-                    _ => Ty::Error,
-                }
+                self.primitive_tys.get(def_id).unwrap().clone()
             }
             Res::Def(DefKind::Struct | DefKind::Enum, def_id) => {
                 let ty_args: Vec<Ty> =
@@ -200,7 +226,7 @@ impl<'hir> TypeChecker<'hir> {
         &mut self,
         def_id: DefId,
         f: &HirFnDef,
-    ) -> TypeckResults {
+    ) -> TypeckBodies {
         // Clearing last check data
         self.locals.clear();
         self.expr_tys.clear();
@@ -237,7 +263,7 @@ impl<'hir> TypeChecker<'hir> {
         &mut self,
         def_id: DefId,
         c: &HirConstDef,
-    ) -> TypeckResults {
+    ) -> TypeckBodies {
         // Clearing last check data
         self.locals.clear();
         self.expr_tys.clear();
@@ -261,7 +287,7 @@ impl<'hir> TypeChecker<'hir> {
     }
 
     /// Finalizes the results by types fallback
-    fn finalize_results(&mut self) -> TypeckResults {
+    fn finalize_results(&mut self) -> TypeckBodies {
         for ty in self.expr_tys.values_mut() {
             *ty = self.icx.fallback(ty.clone());
         }
@@ -272,7 +298,7 @@ impl<'hir> TypeChecker<'hir> {
             *ty = self.icx.fallback(ty.clone());
         }
 
-        TypeckResults {
+        TypeckBodies {
             expr_tys: std::mem::take(&mut self.expr_tys),
             local_tys: std::mem::take(&mut self.locals),
             pat_tys: std::mem::take(&mut self.pat_tys),
@@ -280,8 +306,8 @@ impl<'hir> TypeChecker<'hir> {
     }
 
     /// Returns empty results
-    fn empty_results(&self) -> TypeckResults {
-        TypeckResults {
+    fn empty_results(&self) -> TypeckBodies {
+        TypeckBodies {
             expr_tys: HashMap::new(),
             local_tys: HashMap::new(),
             pat_tys: HashMap::new(),
@@ -786,8 +812,8 @@ impl<'hir> TypeChecker<'hir> {
 /// Performs module typecheck
 pub fn typeck_module(
     hir: &Hir,
-) -> (Vec<TypeckResults>, Vec<TyCheckError>) {
+) -> (TypeckOutput, Vec<TyCheckError>) {
     let mut checker = TypeChecker::new(hir);
-    let results = checker.check_module();
-    (results, checker.errors)
+    let result = checker.check_module();
+    (result, checker.errors)
 }

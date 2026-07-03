@@ -11,7 +11,9 @@ use crow_lex::Lexer;
 use crow_lint::run_lints;
 use crow_lower_hir::lower_module;
 use crow_lower_mir::lower_hir_to_mir;
-use crow_macros::{bail, bug, emit};
+use crow_mir::{Constant, FnId};
+use crow_mir_monomorph::{MonoItem, Monomorph};
+use crow_mir_passes::mir_optimize;
 use crow_parse::Parser;
 use crow_resolving::resolver::Resolver;
 use crow_tycheck::typeck::typeck_module;
@@ -220,6 +222,8 @@ impl Driver {
 
         info!("performing name resolution...");
 
+        let mut mono = Monomorph::new();
+
         let mut resolver = Resolver::new();
         for name in sorted {
             // Resolving module
@@ -240,14 +244,30 @@ impl Driver {
 
                     // Linting module
                     info!("linting `{name}`");
-                    let warnings = run_lints(&hir, &result.0[0]);
+                    let warnings = run_lints(&hir, &result.0);
                     for wrn in warnings {
                         emit!(wrn)
                     }
-                    /*let mut prim_tys = HashMap::new();
+                    // bulding mir module
+                    info!("building mir for `{name}`");
+                    let mut mir = lower_hir_to_mir(&hir, &result.0);
 
+                    println!("Mir module before passes:");
+                    println!("{}", mir);
 
-                    let mir = lower_hir_to_mir(&hir, &result.0, prim_tys);*/
+                    println!("Mir module after passes:");
+                    for mir_body in mir.functions.iter_mut() {
+                        mir_optimize(&mir.tcx, mir_body);
+                    }
+                    println!("{}", mir);
+
+                    let entry_id = mir.functions.iter()
+                        .enumerate()
+                        .find(|(_, body)| body.name == "main")
+                        .map(|(i, _)| FnId::from(i))
+                        .expect("no `main` function found");
+
+                    mono.collect(&mir, entry_id);
                 }
                 Err(errors) => {
                     for err in errors {
@@ -256,6 +276,17 @@ impl Driver {
                 }
             }
         }
+
+        let items = mono.into_items();
+
+        for item in &items {
+            match item {
+                MonoItem::Const(id, ty) => println!("monomorphized const with id: {}, to types: {:?}", id, ty),
+                MonoItem::Fn(inst) => println!("monomorphized fn with id: {}, to types: {:?}", inst.fn_id, inst.substs)
+            }
+        }
+
+        println!("Total monomorphised: {:#?}", items.len());
 
         println!("✨ Done!");
     }
