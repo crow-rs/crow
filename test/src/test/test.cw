@@ -1,3 +1,9 @@
+rec Meme {
+
+}
+
+alt Meme2 = A | B.
+
 fun meme[T](a: T, b: T) -> T {
     a + b
 }

@@ -5,13 +5,9 @@ use crate::{
     },
 };
 use crow_ast::{
-    atom::{Mutability, TypeHint},
-    expr::{Case, Expr, ExprKind, Pat, PatKind},
-    item::{
-        Const, Enum, Field, Fun, ItemKind, Module, NativeFun, Struct,
-        Variant,
-    },
-    stmt::{Stmt, StmtKind},
+    atom::{Mutability, TypeHint}, expr::{Case, Expr, ExprKind, Pat, PatKind}, item::{
+        AdtRec, Const, Enum, Fun, ItemKind, Module, NativeFun, RecField, Variant,
+    }, stmt::{Stmt, StmtKind},
 };
 use crow_common::{bug, span::Span};
 use crow_fresh::Freshen;
@@ -173,7 +169,7 @@ impl Resolver {
     }
 
     /// Resolves struct fields
-    fn resolve_struct_fields(&mut self, root_id: DefId, fields: &[Field]) {
+    fn resolve_struct_fields(&mut self, root_id: DefId, fields: &[RecField]) {
         let fields: Vec<FieldDef> = fields
             .iter()
             .enumerate()
@@ -255,7 +251,7 @@ impl Resolver {
     }
 
     /// Resolves struct
-    fn resolve_struct(&mut self, span: &Span, s: &Struct) {
+    fn resolve_struct(&mut self, span: &Span, s: &AdtRec) {
         // Getting fresh def id
         let def_id = DefId(self.freshen_defs.fresh());
 
@@ -348,7 +344,8 @@ impl Resolver {
         // Resolving items
         for item in &module.items {
             match &item.kind {
-                ItemKind::Struct(s) => self.resolve_struct(&item.span, s),
+                ItemKind::Rec(s) => self.resolve_struct(&item.span, s),
+                ItemKind::Alt(s) => todo!(), //self.resolve_struct(&item.span, s), //todo
                 ItemKind::Enum(e) => self.resolve_enum(&item.span, e),
                 ItemKind::Fun(f) => self.resolve_function(&item.span, f),
                 ItemKind::Native(n) => {
@@ -624,12 +621,15 @@ impl Resolver {
                     self.resolve_type_hint(&c.hint);
                     self.resolve_expr(&c.value);
                 }
-                ItemKind::Struct(s) => {
+                ItemKind::Rec(s) => {
                     self.ribs.push();
                     for field in &s.fields {
                         self.resolve_type_hint(&field.hint);
                     }
                     self.ribs.pop();
+                }
+                ItemKind::Alt(s) => { // todo
+                    todo!()
                 }
                 ItemKind::Enum(e) => {
                     self.ribs.push();

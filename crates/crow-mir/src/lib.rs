@@ -44,7 +44,7 @@ impl MirTyCtxt {
         self.adts.get(&id).expect("unknown ADT DefId")
     }
 
-    pub fn is_enum(&self, id: DefId) -> bool {
+    pub fn is_sum_ty(&self, id: DefId) -> bool {
         self.adt(id).variants.len() > 1
     }
 }

@@ -35,17 +35,31 @@ pub struct Use {
 
 /// Represents struct field
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Field {
+pub struct RecField {
     pub span: Span,
     pub name: String,
     pub hint: TypeHint,
 }
 
-/// Represents struct item
+/// Represents struct field
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Struct {
+pub struct AltField {
+    pub span: Span,
     pub name: String,
-    pub fields: Vec<Field>,
+}
+
+/// Represents rec item
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AdtRec {
+    pub name: String,
+    pub fields: Vec<RecField>,
+}
+
+/// Represents rec item
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AdtAlt {
+    pub name: String,
+    pub fields: Vec<AltField>,
 }
 
 /// Represents enum varisnt
@@ -97,7 +111,8 @@ pub struct Const {
 /// Defines item kind
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ItemKind {
-    Struct(Struct),
+    Rec(AdtRec),
+    Alt(AdtAlt),
     Enum(Enum),
     Fun(Fun),
     Native(NativeFun),

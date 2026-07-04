@@ -379,7 +379,8 @@ impl<'s> Lexer<'s> {
     fn token_kind_for_id(value: &str) -> TokenKind {
         match value {
             "use" => TokenKind::Use,
-            "struct" => TokenKind::Struct,
+            "rec" => TokenKind::Rec,
+            "alt" => TokenKind::Alt,
             "enum" => TokenKind::Enum,
             "val" => TokenKind::Val,
             "var" => TokenKind::Var,

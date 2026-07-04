@@ -12,7 +12,7 @@ use crow_lex::Lexer;
 use crow_lint::run_lints;
 use crow_lower_hir::lower_module;
 use crow_lower_mir::lower_hir_to_mir;
-use crow_mir::{Constant, FnId, MirModule, verify};
+use crow_mir::{FnId, MirModule, verify};
 use crow_mir_monomorph::{MonoItem, Monomorph};
 use crow_mir_passes::mir_optimize;
 use crow_parse::Parser;
@@ -312,7 +312,7 @@ impl Driver {
                 &triple,
                 cpu_name.to_str().unwrap(),
                 cpu_features.to_str().unwrap(),
-                OptimizationLevel::Aggressive,
+                OptimizationLevel::Default,
                 inkwell::targets::RelocMode::PIC,
                 inkwell::targets::CodeModel::Default,
             )
@@ -321,7 +321,7 @@ impl Driver {
         let llvm_module = codegen_mir_to_llvm(&ctx, &mir_test.unwrap(), &items, "module_name");
         llvm_module.verify().unwrap();
         llvm_module
-            .run_passes("default<O3>", &tm, inkwell::passes::PassBuilderOptions::create())
+            .run_passes("default<O0>", &tm, inkwell::passes::PassBuilderOptions::create())
             .unwrap();
 
         llvm_module.print_to_stderr();

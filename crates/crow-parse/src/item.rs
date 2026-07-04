@@ -1,10 +1,8 @@
 /// Imports
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
-    atom::{Publicity, TypeHint},
-    item::{
-        Enum, Field, Fun, Item, ItemKind, Struct, Use, UseKind, UsePath,
-        Variant,
+    atom::{Publicity, TypeHint}, item::{
+        AdtAlt, AdtRec, AltField, Enum, Fun, Item, ItemKind, RecField, Use, UseKind, UsePath, Variant,
     },
 };
 use crow_common::bail;
@@ -12,24 +10,36 @@ use crow_lex::token::TokenKind;
 
 /// Item parsing implementation
 impl<'s> Parser<'s> {
-    // Parses struct field
-    fn struct_field(&mut self) -> Field {
+    // Parses rec field
+    fn rec_field(&mut self) -> RecField {
         let start_span = self.peek().span.clone();
         let name = self.expect(TokenKind::Id).lexeme;
         self.expect(TokenKind::Colon);
         let hint = self.type_hint();
         let end_span = self.prev().span.clone();
 
-        Field {
+        RecField {
             span: start_span + end_span,
             name,
-            hint,
+            hint
         }
     }
 
-    // Parses struct item kind
-    fn struct_item_kind(&mut self) -> ItemKind {
-        // Bumping `struct`
+    // Parses alt field
+    fn alt_field(&mut self) -> AltField {
+        let start_span = self.peek().span.clone();
+        let name = self.expect(TokenKind::Id).lexeme;
+        let end_span = self.prev().span.clone();
+
+        AltField {
+            span: start_span + end_span,
+            name,
+        }
+    }
+
+    // Parses rec item kind
+    fn rec_item_kind(&mut self) -> ItemKind {
+        // Bumping `rec`
         self.bump();
 
         // Parsing signature
@@ -40,10 +50,33 @@ impl<'s> Parser<'s> {
             TokenKind::Lbrace,
             TokenKind::Rbrace,
             TokenKind::Comma,
-            |p| p.struct_field(),
+            |p| p.rec_field(),
         );
 
-        ItemKind::Struct(Struct {
+        ItemKind::Rec(AdtRec {
+            name,
+            fields,
+        })
+    }
+
+    // Parses alt item kind
+    // alt Name = V | A | ...
+    fn alt_item_kind(&mut self) -> ItemKind {
+        // Bumping `alt`
+        self.bump();
+
+        // Parsing signature
+        let name = self.expect(TokenKind::Id).lexeme;
+
+        // Parsing fields
+        let fields = self.sep_by(
+            TokenKind::Eq,
+            TokenKind::Dot,
+            TokenKind::Bar,
+            |p| p.alt_field(),
+        );
+
+        ItemKind::Alt(AdtAlt {
             name,
             fields,
         })
@@ -185,7 +218,8 @@ impl<'s> Parser<'s> {
         let tk = self.peek().clone();
         let start_span = self.peek().span.clone();
         let kind = match &tk.kind {
-            TokenKind::Struct => self.struct_item_kind(),
+            TokenKind::Rec => self.rec_item_kind(),
+            TokenKind::Alt => self.alt_item_kind(),
             TokenKind::Enum => self.enum_item_kind(),
             TokenKind::Fun | TokenKind::Pure => self.fun_item_kind(),
             _ => bail!(ParseError::UnexpectedItemToken {

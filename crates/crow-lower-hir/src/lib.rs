@@ -482,7 +482,7 @@ impl LoweringCtxt {
 
         // Lowering item
         let (def_id, kind) = match &item.kind {
-            ItemKind::Struct(s) => {
+            ItemKind::Rec(s) => {
                 let def_id = self.find_toplevel_def(&s.name);
                 let fields: Vec<HirFieldDef> = s
                     .fields
@@ -502,6 +502,9 @@ impl LoweringCtxt {
                         fields,
                     }),
                 )
+            }
+            ItemKind::Alt(s) => {
+                todo!()
             }
             ItemKind::Enum(e) => {
                 let def_id = self.find_toplevel_def(&e.name);

@@ -5,63 +5,47 @@ use std::collections::HashMap;
 
 use crow_mir_monomorph::{Instance, MonoItem};
 use inkwell::{
-    IntPredicate,
-    basic_block::BasicBlock as LlvmBlock,
-    builder::Builder,
-    context::Context,
-    module::Module,
-    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
-    values::{
-        BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
-        IntValue, PointerValue,
+    IntPredicate, basic_block::BasicBlock as LlvmBlock, builder::Builder, context::Context, module::Module, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType}, values::{
+        BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue,
     },
 };
 
 use crow_mir::{
-    AggregateKind, BasicBlock, Constant, LocalDecl, MirBody, MirModule, MirNative, Operand, Place, Projection, Rvalue, Statement, Substs, Terminator, UnOp, subst_ty,
+    AggregateKind, BasicBlock, Constant, LocalDecl, MirBody, MirModule, MirNative, MirTyCtxt, Operand, Place, Projection, Rvalue, Statement, Substs, Terminator, UnOp, subst_ty,
 };
 use crow_tycheck::ty::{FloatTy, IntTy, Ty};
 
-use crate::{ops_builder::build_llvm_binop, type_builder::construct_type};
+use crate::{ops_builder::build_llvm_binop, type_builder::TypeCache};
 
-pub struct Codegen<'llvm> {
+pub struct Codegen<'llvm, 'mir> {
     pub context: &'llvm Context,
     pub module: Module<'llvm>,
     pub builder: Builder<'llvm>,
-
-    fn_values: Vec<FunctionValue<'llvm>>,
+    pub types: TypeCache<'llvm>,
+    pub tcx: &'mir MirTyCtxt,
     native_fns: Vec<FunctionValue<'llvm>>,
     instance_fns: HashMap<Instance, FunctionValue<'llvm>>,
 }
 
-struct FnCodegen<'a, 'llvm> {
-    cg: &'a Codegen<'llvm>,
+struct FnCodegen<'a, 'llvm, 'mir> {
+    cg: &'a mut Codegen<'llvm, 'mir>,
     body: &'a MirBody,
-
     locals: Vec<PointerValue<'llvm>>,
     blocks: Vec<LlvmBlock<'llvm>>,
 }
 
-impl<'llvm> Codegen<'llvm> {
-    pub fn new(context: &'llvm Context, module_name: &str) -> Self {
+
+impl<'llvm, 'mir> Codegen<'llvm, 'mir> {
+    pub fn new(context: &'llvm Context, tcx: &'mir MirTyCtxt, module_name: &str) -> Self {
         Self {
             module: context.create_module(module_name),
             builder: context.create_builder(),
+            types: TypeCache::new(context),
             context,
-            fn_values: Vec::new(),
+            tcx,
             native_fns: Vec::new(),
-            instance_fns: HashMap::new()
+            instance_fns: HashMap::new(),
         }
-    }
-
-    fn declare_function_with_name(&self, body: &MirBody, name: &str) -> FunctionValue<'llvm> {
-        let param_tys: Vec<&Ty> = body.locals[1..=body.arg_count]
-            .iter()
-            .map(|l| &l.ty)
-            .collect();
-        let ret_ty = body.ret_ty();
-        let fn_type = self.build_fn_type_from_refs(&param_tys, ret_ty);
-        self.module.add_function(name, fn_type, None)
     }
 
     pub fn codegen_module(&mut self, mir: &MirModule, items: &[MonoItem]) {
@@ -70,7 +54,6 @@ impl<'llvm> Codegen<'llvm> {
             self.native_fns.push(fv);
         }
 
-        // Первый проход: объявляем сигнатуры
         for item in items {
             if let MonoItem::Fn(inst) = item {
                 let body = &mir.functions[inst.fn_id.index()];
@@ -81,7 +64,6 @@ impl<'llvm> Codegen<'llvm> {
             }
         }
 
-        // Второй проход: генерим тела
         for item in items {
             if let MonoItem::Fn(inst) = item {
                 let body = &mir.functions[inst.fn_id.index()];
@@ -92,48 +74,34 @@ impl<'llvm> Codegen<'llvm> {
         }
     }
 
-    fn declare_native(&self, native: &MirNative) -> FunctionValue<'llvm> {
+    fn declare_native(&mut self, native: &MirNative) -> FunctionValue<'llvm> {
         let fn_type = self.build_fn_type(&native.params, &native.ret);
         self.module.add_function(&native.symbol, fn_type, None)
     }
 
-    fn declare_function(&self, body: &MirBody) -> FunctionValue<'llvm> {
-        let param_tys: Vec<&Ty> = body.locals[1..=body.arg_count]
+    fn declare_function_with_name(&mut self, body: &MirBody, name: &str) -> FunctionValue<'llvm> {
+        let param_tys: Vec<Ty> = body.locals[1..=body.arg_count]
             .iter()
-            .map(|l| &l.ty)
+            .map(|l| l.ty.clone())
             .collect();
-        let ret_ty = body.ret_ty();
-        let fn_type = self.build_fn_type_from_refs(&param_tys, ret_ty);
-        self.module.add_function(&body.name, fn_type, None)
+        let ret_ty = body.ret_ty().clone();
+        let fn_type = self.build_fn_type(&param_tys, &ret_ty);
+        self.module.add_function(name, fn_type, None)
     }
 
-    fn build_fn_type(&self, params: &[Ty], ret: &Ty) -> FunctionType<'llvm> {
+    fn build_fn_type(&mut self, params: &[Ty], ret: &Ty) -> FunctionType<'llvm> {
         let param_types: Vec<BasicMetadataTypeEnum> = params.iter()
-            .map(|t| construct_type(self.context, t).into())
+            .map(|t| self.types.construct_type(self.tcx, t).into())
             .collect();
-
         if *ret == Ty::Unit || *ret == Ty::Never {
             self.context.void_type().fn_type(&param_types, false)
         } else {
-            let ret_type = construct_type(self.context, ret);
+            let ret_type = self.types.construct_type(self.tcx, ret);
             ret_type.fn_type(&param_types, false)
         }
     }
 
-    fn build_fn_type_from_refs(&self, params: &[&Ty], ret: &Ty) -> FunctionType<'llvm> {
-        let param_types: Vec<BasicMetadataTypeEnum> = params.iter()
-            .map(|t| construct_type(self.context, t).into())
-            .collect();
-
-        if *ret == Ty::Unit || *ret == Ty::Never {
-            self.context.void_type().fn_type(&param_types, false)
-        } else {
-            let ret_type = construct_type(self.context, ret);
-            ret_type.fn_type(&param_types, false)
-        }
-    }
-
-    fn codegen_function(&self, body: &MirBody, fv: FunctionValue<'llvm>) {
+    fn codegen_function(&mut self, body: &MirBody, fv: FunctionValue<'llvm>) {
         let mut fcg = FnCodegen {
             cg: self,
             body,
@@ -144,7 +112,7 @@ impl<'llvm> Codegen<'llvm> {
     }
 }
 
-impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
+impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
     fn ctx(&self) -> &'llvm Context { self.cg.context }
     fn builder(&self) -> &Builder<'llvm> { &self.cg.builder }
 
@@ -153,7 +121,7 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
         self.builder().position_at_end(entry);
 
         for (i, decl) in self.body.locals.iter().enumerate() {
-            let ty = construct_type(self.ctx(), &decl.ty);
+            let ty = self.cg.types.construct_type(self.cg.tcx, &decl.ty);
             let default_name = format!("_{i}");
             let name = decl.name.as_deref().unwrap_or(&default_name);
             let alloca = self.builder().build_alloca(ty, name).unwrap();
@@ -179,17 +147,18 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
         }
     }
 
-    fn codegen_block(&self, bb: &crow_mir::BasicBlock) {
+    fn codegen_block(&mut self, bb: &crow_mir::BasicBlock) {
         for stmt in &bb.stmts {
             self.codegen_stmt(stmt);
         }
         self.codegen_terminator(&bb.term);
     }
 
-    fn codegen_stmt(&self, stmt: &Statement) {
+    fn codegen_stmt(&mut self, stmt: &Statement) {
         match stmt {
             Statement::Assign(place, rvalue) => {
-                let val = self.codegen_rvalue(rvalue, &self.place_ty(place));
+                let dest_ty = self.place_ty(place);
+                let val = self.codegen_rvalue(rvalue, &dest_ty);
                 let ptr = self.codegen_place_ptr(place);
                 self.builder().build_store(ptr, val).unwrap();
             }
@@ -199,7 +168,7 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
         }
     }
 
-    fn codegen_terminator(&self, term: &Terminator) {
+    fn codegen_terminator(&mut self, term: &Terminator) {
         match term {
             Terminator::Goto(target) => {
                 self.builder()
@@ -275,18 +244,14 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
             }
 
             Terminator::Return => {
-                let ret_ty = &self.body.locals[0].ty;
-                if *ret_ty == Ty::Unit || *ret_ty == Ty::Never {
+                let ret_ty = self.body.locals[0].ty.clone();
+                if ret_ty == Ty::Unit || ret_ty == Ty::Never {
                     self.builder().build_return(None).unwrap();
                 } else {
-                    let ret_val = self.builder()
-                        .build_load(
-                            construct_type(self.ctx(), ret_ty),
-                            self.locals[0],
-                            "ret",
-                        )
-                        .unwrap();
-                    self.builder().build_return(Some(&ret_val)).unwrap();
+                    let llvm_ty = self.cg.types.construct_type(self.cg.tcx, &ret_ty);
+                    let local_ptr = self.locals[0];
+                    let ret_val = self.cg.builder.build_load(llvm_ty, local_ptr, "ret").unwrap();
+                    self.cg.builder.build_return(Some(&ret_val)).unwrap();
                 }
             }
 
@@ -296,7 +261,7 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
         }
     }
 
-    fn codegen_rvalue(&self, rvalue: &Rvalue, dest_ty: &Ty) -> BasicValueEnum<'llvm> {
+    fn codegen_rvalue(&mut self, rvalue: &Rvalue, dest_ty: &Ty) -> BasicValueEnum<'llvm> {
         match rvalue {
             Rvalue::Use(op) => self.codegen_operand(op),
 
@@ -343,9 +308,11 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
             Rvalue::Discriminant(place) => {
                 // Для enum: загружаем первое поле (tag)
                 let place_ptr = self.codegen_place_ptr(place);
+                let place_ty = self.place_ty(place);
+                let llvm_ty = self.cg.types.construct_type(self.cg.tcx, &place_ty);
                 let tag_ptr = self.builder()
                     .build_struct_gep(
-                        construct_type(self.ctx(), &self.place_ty(place)),
+                        llvm_ty,
                         place_ptr,
                         0,
                         "discr_ptr",
@@ -358,21 +325,22 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
 
             Rvalue::Cast(kind, op, target_ty) => {
                 let val = self.codegen_operand(op);
-                let target = construct_type(self.ctx(), target_ty);
-                self.codegen_cast(kind, val, target, &self.operand_ty(op), target_ty)
+                let target = self.cg.types.construct_type(self.cg.tcx, target_ty);
+                let op_ty = self.operand_ty(op);
+                self.codegen_cast(kind, val, target, &op_ty, target_ty)
             }
         }
     }
 
     fn codegen_aggregate(
-        &self,
+        &mut self,
         kind: &AggregateKind,
         vals: &[BasicValueEnum<'llvm>],
         dest_ty: &Ty,
     ) -> BasicValueEnum<'llvm> {
         match kind {
             AggregateKind::Adt { .. } => {
-                let struct_ty = construct_type(self.ctx(), dest_ty);
+                let struct_ty = self.cg.types.construct_type(self.cg.tcx, dest_ty);
                 let mut agg = struct_ty.into_struct_type()
                     .get_undef();
                 for (i, val) in vals.iter().enumerate() {
@@ -384,7 +352,7 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
                 agg.as_basic_value_enum()
             }
             AggregateKind::Closure { .. } => {
-                let struct_ty = construct_type(self.ctx(), dest_ty);
+                let struct_ty = self.cg.types.construct_type(self.cg.tcx, dest_ty);
                 let mut agg = struct_ty.into_struct_type().get_undef();
                 for (i, val) in vals.iter().enumerate() {
                     agg = self.builder()
@@ -398,7 +366,7 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
     }
 
     fn codegen_cast(
-        &self,
+        &mut self,
         kind: &crow_mir::CastKind,
         val: BasicValueEnum<'llvm>,
         target: BasicTypeEnum<'llvm>,
@@ -465,34 +433,40 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
         }
     }
 
-    fn codegen_operand(&self, op: &Operand) -> BasicValueEnum<'llvm> {
+    fn codegen_operand(&mut self, op: &Operand) -> BasicValueEnum<'llvm> {
         match op {
             Operand::Copy(place) => {
                 let ptr = self.codegen_place_ptr(place);
-                let ty = construct_type(self.ctx(), &self.place_ty(place));
+                let p_ty = self.place_ty(place);
+                let ty = self.cg.types.construct_type(self.cg.tcx, &p_ty);
                 self.builder().build_load(ty, ptr, "load").unwrap()
             }
             Operand::Const(c) => self.codegen_constant(c),
         }
     }
 
-    fn codegen_place_ptr(&self, place: &Place) -> PointerValue<'llvm> {
+    fn codegen_place_ptr(&mut self, place: &Place) -> PointerValue<'llvm> {
         let mut ptr = self.locals[place.local.index()];
         let mut current_ty = self.body.locals[place.local.index()].ty.clone();
+        let mut active_variant: u32 = 0;
 
         for proj in &place.proj {
             match proj {
+                Projection::Downcast(v) => {
+                    active_variant = *v;
+                }
                 Projection::Field(idx) => {
-                    let llvm_ty = construct_type(self.ctx(), &current_ty);
-                    ptr = self.builder()
+                    let llvm_ty = self.cg.types.construct_type(self.cg.tcx, &current_ty);
+                    ptr = self.cg.builder
                         .build_struct_gep(llvm_ty, ptr, *idx, "field_ptr")
                         .unwrap();
-                    current_ty = self.field_ty(&current_ty, *idx);
-                }
-                Projection::Downcast(_) => {
-                    // Downcast не генерирует код — просто переключает
-                    // "активный вариант" для последующих Field проекций.
-                    // Pointer остаётся тем же.
+                    current_ty = match &current_ty {
+                        Ty::Adt(def_id, _) => {
+                            self.cg.tcx.adt(*def_id).variants[active_variant as usize]
+                                .fields[*idx as usize].clone()
+                        }
+                        _ => panic!("field on non-ADT"),
+                    };
                 }
             }
         }
@@ -500,30 +474,18 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
         ptr
     }
 
-    fn place_ty(&self, place: &Place) -> Ty {
+    fn place_ty(&mut self, place: &Place) -> Ty {
         self.body.locals[place.local.index()].ty.clone()
     }
 
-    fn field_ty(&self, ty: &Ty, field_idx: u32) -> Ty {
-        match ty {
-            Ty::Adt(def_id, _) => {
-                // Нужен MirTyCtxt, но у нас его нет в FnCodegen.
-                // Fallback: возвращаем i64 как заглушку.
-                // TODO: передать MirTyCtxt в FnCodegen.
-                Ty::Int(IntTy::I64)
-            }
-            _ => panic!("field projection on non-ADT type"),
-        }
-    }
-
-    fn operand_ty(&self, op: &Operand) -> Ty {
+    fn operand_ty(&mut self, op: &Operand) -> Ty {
         match op {
             Operand::Copy(place) => self.place_ty(place),
             Operand::Const(c) => c.ty(),
         }
     }
 
-    fn codegen_constant(&self, c: &Constant) -> BasicValueEnum<'llvm> {
+    fn codegen_constant(&mut self, c: &Constant) -> BasicValueEnum<'llvm> {
         match c {
             Constant::Unit => {
                 self.ctx().i8_type().const_zero().as_basic_value_enum()
@@ -564,7 +526,7 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
         }
     }
 
-    fn resolve_callee(&self, func: &Operand) -> FunctionValue<'llvm> {
+    fn resolve_callee(&mut self, func: &Operand) -> FunctionValue<'llvm> {
         match func {
             Operand::Const(Constant::Fn(fn_id, substs)) => {
                 let inst = Instance { fn_id: *fn_id, substs: substs.clone() };
@@ -578,7 +540,7 @@ impl<'a, 'llvm> FnCodegen<'a, 'llvm> {
         }
     }
 
-    fn build_trap(&self) {
+    fn build_trap(&mut self) {
         let trap = inkwell::intrinsics::Intrinsic::find("llvm.trap").unwrap();
         let trap_fn = trap
             .get_declaration(&self.cg.module, &[])
@@ -669,7 +631,7 @@ pub fn codegen_mir_to_llvm<'llvm>(
     items: &[MonoItem],
     module_name: &str,
 ) -> Module<'llvm> {
-    let mut cg = Codegen::new(context, module_name);
+    let mut cg = Codegen::new(context, &mir.tcx, module_name);
     cg.codegen_module(mir, items);
     cg.module
 }
