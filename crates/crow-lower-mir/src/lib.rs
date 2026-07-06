@@ -470,6 +470,28 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
     fn lower_expr(&mut self, expr_id: ExprId, dest: Place) {
         let kind = self.hir_body.expr(expr_id).kind.clone();
         match kind {
+            HirExprKind::RecCtor { ref res, ref fields } => {
+                if let Res::Def(_, did) = res {
+                    let mut sorted: Vec<(u32, ExprId)> = fields.iter()
+                        .map(|(name, eid)| {
+                            let idx = *self.lcx.field_indices
+                                .get(&(*did, name.clone()))
+                                .unwrap_or_else(|| panic!("no field `{name}` on {did:?}"));
+                            (idx, *eid)
+                        })
+                        .collect();
+                    sorted.sort_by_key(|(idx, _)| *idx);
+
+                    let ops: Vec<Operand> = sorted.iter()
+                        .map(|(_, eid)| self.as_operand(*eid))
+                        .collect();
+
+                    self.push_assign(dest, Rvalue::Aggregate(
+                        AggregateKind::Adt { def_id: *did, variant: 0 },
+                        ops,
+                    ));
+                }
+            }
             HirExprKind::Lit(ref lit) => {
                 let ty = self.expr_ty(expr_id);
                 self.push_assign(dest, Rvalue::Use(lower_lit(lit, &ty)));
@@ -949,6 +971,11 @@ fn walk_free(
 ) {
     let kind = body.expr(eid).kind.clone();
     match kind {
+        HirExprKind::RecCtor { fields, .. } => {
+            for (_, eid) in fields {
+                walk_free(body, eid, bound, free, seen);
+            }
+        }
         HirExprKind::Var(Res::Local(lid)) => {
             if !bound.contains(&lid) && seen.insert(lid) {
                 let name = find_local_name(body, lid);

@@ -13,7 +13,7 @@ use crow_hir::pat::HirPatKind;
 use crow_hir::stmt::HirStmtKind;
 use crow_hir::ty::{HirTy, HirTyKind};
 use crow_resolving::table::{DefId, DefKind, LocalId, Res};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Typeck bodies
 pub struct TypeckBodies {
@@ -386,6 +386,66 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
+    fn check_record_ctor(&mut self, body: &HirBody, span: Span, res: &Res, fields: &Vec<(String, ExprId)>) -> Ty {
+        match res {
+            Res::Def(DefKind::Struct, did) => {
+                let struct_def = self.hir.items.vec().iter()
+                    .find(|item| item.def_id == *did)
+                    .and_then(|item| match &item.kind {
+                        HirItemKind::Struct(s) => Some(s),
+                        _ => None,
+                     });
+
+                match struct_def {
+                    Some(s) => {
+                        for (name, init_id) in fields {
+                            let init_ty = self.check_expr(body, *init_id);
+                            match s.fields.iter().find(|f| f.name == *name) {
+                                Some(field) => {
+                                    let field_ty = self.lower_hir_ty(&field.ty);
+                                    self.eq(field_ty, init_ty, span.clone());
+                                }
+                                None => {
+                                    self.errors.push(TyCheckError::NoSuchField {
+                                        ty: format!("adt#{}", did.0),
+                                        field: name.clone(),
+                                        src: span.0.clone(),
+                                        span: span.1.clone().into(),
+                                    });
+                                }
+                            }
+                        }
+
+                        let provided: HashSet<&str> = fields.iter()
+                            .map(|(name, _)| name.as_str())
+                            .collect();
+                        for field in &s.fields {
+                            if !provided.contains(field.name.as_str()) {
+                                self.errors.push(TyCheckError::MissingField {
+                                    ty: s.name.clone(),
+                                    field: field.name.clone(),
+                                    src: span.0.clone(),
+                                    span: span.1.clone().into(),
+                                });
+                            }
+                        }
+
+                        if provided.len() != fields.len() {
+                            self.errors.push(TyCheckError::DuplicateField {
+                                ty: s.name.clone(),
+                                src: span.0.clone(),
+                                span: span.1.clone().into(),
+                            });
+                        }
+                        Ty::Adt(*did, vec![])
+                    }
+                    None => Ty::Error,
+                }
+            }
+            _ => Ty::Error,
+        }
+    }
+
     /// Checks expression
     fn check_expr(&mut self, body: &HirBody, expr_id: ExprId) -> Ty {
         // Getting expression info
@@ -394,6 +454,7 @@ impl<'hir> TypeChecker<'hir> {
 
         // Inferring expression type
         let ty = match &expr.kind {
+            HirExprKind::RecCtor { res, fields } => self.check_record_ctor(body, span, res, fields),
             HirExprKind::Lit(lit) => self.infer_lit(lit),
             HirExprKind::Var(res) => self.infer_var(res, expr_id),
             HirExprKind::Unary(inner_id, op) => {

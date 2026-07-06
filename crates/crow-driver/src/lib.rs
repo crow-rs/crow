@@ -6,7 +6,7 @@ mod io;
 use crate::errors::DriverError;
 use camino::Utf8PathBuf;
 use crow_ast::item;
-use crow_codegen::codegen_mir_to_llvm;
+use crow_codegen::{codegen_module, comp_ops::TargetConfig};
 use crow_common::{bail, bug, emit};
 use crow_lex::Lexer;
 use crow_lint::run_lints;
@@ -300,32 +300,12 @@ impl Driver {
         }
 
         println!("Total monomorphised: {:#?}", items.len());
-        Target::initialize_all(&InitializationConfig::default());
 
-        let triple = TargetMachine::get_default_triple();
-        let cpu_features = TargetMachine::get_host_cpu_features();
-        let cpu_name = TargetMachine::get_host_cpu_name();
 
-        let target = Target::from_triple(&triple).unwrap();
-        let tm = target
-            .create_target_machine(
-                &triple,
-                cpu_name.to_str().unwrap(),
-                cpu_features.to_str().unwrap(),
-                OptimizationLevel::Default,
-                inkwell::targets::RelocMode::PIC,
-                inkwell::targets::CodeModel::Default,
-            )
-            .unwrap();
-        let ctx = Context::create();
-        let llvm_module = codegen_mir_to_llvm(&ctx, &mir_test.unwrap(), &items, "module_name");
-        llvm_module.verify().unwrap();
-        llvm_module
-            .run_passes("default<O0>", &tm, inkwell::passes::PassBuilderOptions::create())
-            .unwrap();
+        let build_cfg = TargetConfig::host();
 
-        llvm_module.print_to_stderr();
-
+        codegen_module(&mir_test.unwrap(), &items, "module_name", &build_cfg);
+    
         println!("✨ Done!");
     }
 }

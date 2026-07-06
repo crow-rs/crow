@@ -42,6 +42,14 @@ pub struct Case {
     pub body: Expr,
 }
 
+/// Represents record init pair: name = init_value,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Initializator {
+    pub span: Span,
+    pub lhs: String,
+    pub rhs: Expr
+}
+
 /// Defines expression kind
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprKind {
@@ -77,6 +85,9 @@ pub enum ExprKind {
 
     /// Represents paren expression
     Paren(Box<Expr>),
+
+    //record constructor expression
+    RecCtor(String, Vec<Initializator>),
 
     /// Block expression
     Block(Vec<Stmt>),

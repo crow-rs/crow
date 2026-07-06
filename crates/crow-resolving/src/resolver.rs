@@ -345,7 +345,7 @@ impl Resolver {
         for item in &module.items {
             match &item.kind {
                 ItemKind::Rec(s) => self.resolve_struct(&item.span, s),
-                ItemKind::Alt(s) => todo!(), //self.resolve_struct(&item.span, s), //todo
+                ItemKind::Alt(s) => todo!(), //self.resolve_struct(&item.span, &s.clone()), 
                 ItemKind::Enum(e) => self.resolve_enum(&item.span, e),
                 ItemKind::Fun(f) => self.resolve_function(&item.span, f),
                 ItemKind::Native(n) => {
@@ -397,6 +397,12 @@ impl Resolver {
     /// Resolves expression
     fn resolve_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::RecCtor(rec_name, initializators) => {
+                self.resolve_local(rec_name, expr.span.clone());
+                for init in initializators {
+                    self.resolve_expr(&init.rhs);
+                }
+            }
             ExprKind::Lit(_) => {}
             ExprKind::Var(name) => {
                 self.resolve_local(name, expr.span.clone());

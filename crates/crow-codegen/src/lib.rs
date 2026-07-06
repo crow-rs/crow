@@ -1,11 +1,13 @@
 mod type_builder;
 mod ops_builder;
 
+pub mod comp_ops;
+
 use std::collections::HashMap;
 
 use crow_mir_monomorph::{Instance, MonoItem};
 use inkwell::{
-    IntPredicate, basic_block::BasicBlock as LlvmBlock, builder::Builder, context::Context, module::Module, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType}, values::{
+    IntPredicate, OptimizationLevel, basic_block::BasicBlock as LlvmBlock, builder::Builder, context::Context, module::Module, targets::{InitializationConfig, Target, TargetTriple}, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType}, values::{
         BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue,
     },
 };
@@ -15,7 +17,7 @@ use crow_mir::{
 };
 use crow_tycheck::ty::{FloatTy, IntTy, Ty};
 
-use crate::{ops_builder::build_llvm_binop, type_builder::TypeCache};
+use crate::{comp_ops::TargetConfig, ops_builder::build_llvm_binop, type_builder::TypeCache};
 
 pub struct Codegen<'llvm, 'mir> {
     pub context: &'llvm Context,
@@ -625,13 +627,32 @@ fn mangle_name(name: &str, substs: &Substs) -> String {
     format!("{name}__{}", suffix.join("_"))
 }
 
-pub fn codegen_mir_to_llvm<'llvm>(
-    context: &'llvm Context,
-    mir: &MirModule,
-    items: &[MonoItem],
-    module_name: &str,
-) -> Module<'llvm> {
-    let mut cg = Codegen::new(context, &mir.tcx, module_name);
+pub fn codegen_module<'llvm>(mir: &MirModule, items: &[MonoItem], module_name: &str, build_cfg: &TargetConfig) {
+    Target::initialize_all(&InitializationConfig::default());
+    
+    let triple = TargetTriple::create(build_cfg.triple.as_str());
+    
+    let target = Target::from_triple(&triple).unwrap();
+    let tm = target
+        .create_target_machine(
+            &triple,
+            &build_cfg.cpu,
+            &build_cfg.features,
+            OptimizationLevel::Aggressive,
+            inkwell::targets::RelocMode::PIC,
+            inkwell::targets::CodeModel::Default,
+        )
+        .unwrap();
+    
+    let context = Context::create();
+
+    let mut cg = Codegen::new(&context, &mir.tcx, module_name);
     cg.codegen_module(mir, items);
+    cg.module.verify().unwrap();
+
     cg.module
+            .run_passes("default<O3>", &tm, inkwell::passes::PassBuilderOptions::create())
+            .unwrap();
+
+    cg.module.print_to_stderr();
 }

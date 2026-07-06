@@ -52,7 +52,7 @@ impl<'llvm> TypeCache<'llvm> {
         let adt = tcx.adt(def_id);
         let is_sum_ty = tcx.is_sum_ty(def_id);
 
-        let st = if is_sum_ty {
+        let st = if !is_sum_ty {
             let fields: Vec<BasicTypeEnum<'llvm>> = adt.variants[0]
                 .fields
                 .iter()
@@ -87,7 +87,7 @@ impl<'llvm> TypeCache<'llvm> {
             Ty::Adt(def_id, _) => {
                 let adt = tcx.adt(*def_id);
                 let is_sum_ty = tcx.is_sum_ty(*def_id);
-                if is_sum_ty {
+                if !is_sum_ty {
                     adt.variants[0].fields.iter()
                         .map(|f| self.type_size(tcx, f))
                         .sum()

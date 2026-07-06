@@ -36,6 +36,8 @@ pub struct Parser<'s> {
     /// Lookahead token
     /// (used for predictive parsing)
     next: Option<Token>,
+
+    lookahead: Option<Token>,
 }
 
 /// Implementation
@@ -53,6 +55,7 @@ impl<'s> Parser<'s> {
             previous: None,
             current,
             next,
+            lookahead: None,
         }
     }
 
@@ -150,6 +153,24 @@ impl<'s> Parser<'s> {
             }),
         }
     }
+    
+    pub(crate) fn peek_next(&self) -> Option<&Token> {
+        self.next.as_ref()
+    }
+
+    pub(crate) fn peek_nth(&mut self, n: usize) -> Option<&Token> {
+        match n {
+            0 => self.current.as_ref(),
+            1 => self.next.as_ref(),
+            2 => {
+                if self.lookahead.is_none() {
+                    self.lookahead = self.lexer.next();
+                }
+                self.lookahead.as_ref()
+            }
+            _ => None,
+        }
+    }
 
     /// Retrieves previous token
     pub(crate) fn prev(&self) -> &Token {
@@ -189,9 +210,10 @@ impl<'s> Parser<'s> {
 
     /// Advances current token
     pub(crate) fn bump(&mut self) -> Token {
-        self.previous = self.current.take();
+        let prev = self.current.take();
+        self.previous = prev.clone();
         self.current = self.next.take();
-        self.next = self.lexer.next();
-        self.previous.clone().unwrap()
+        self.next = self.lookahead.take().or_else(|| self.lexer.next());
+        prev.unwrap()
     }
 }

@@ -264,6 +264,32 @@ impl fmt::Display for ConstId {
 
 impl fmt::Display for MirModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // ADT definitions
+        for (def_id, adt) in &self.tcx.adts {
+            if adt.variants.len() == 1 {
+                // rec (struct)
+                writeln!(f, "rec {} {{  // adt#{}", adt.name, def_id.0)?;
+                for (i, field) in adt.variants[0].fields.iter().enumerate() {
+                    writeln!(f, "    {i}: {field}")?;
+                }
+                writeln!(f, "}}\n")?;
+            } else {
+                // enum
+                writeln!(f, "enum {} {{  // adt#{}", adt.name, def_id.0)?;
+                for variant in &adt.variants {
+                    if variant.fields.is_empty() {
+                        writeln!(f, "    {}", variant.name)?;
+                    } else {
+                        let fields: Vec<String> = variant.fields.iter()
+                            .map(|t| format!("{t}"))
+                            .collect();
+                        writeln!(f, "    {}({})", variant.name, fields.join(", "))?;
+                    }
+                }
+                writeln!(f, "}}\n")?;
+            }
+        }
+
         for native in &self.natives {
             writeln!(f, "{native}")?;
         }

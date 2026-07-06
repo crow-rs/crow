@@ -159,6 +159,11 @@ impl LintDriver {
         }
 
         match &expr.kind {
+            HirExprKind::RecCtor { fields, .. } => {
+                for field in fields {
+                    self.visit_expr(cx, field.1);
+                }
+            }
             HirExprKind::Block(stmt_ids) => {
                 for &sid in stmt_ids {
                     self.visit_stmt(cx, sid);

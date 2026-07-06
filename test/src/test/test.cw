@@ -1,21 +1,16 @@
 rec Meme {
-
-}
-
-alt Meme2 = A | B.
-
-fun meme[T](a: T, b: T) -> T {
-    a + b
+    a: i32,
+    b: i8
 }
 
 fun main() -> i8 {
-    _ = meme(1, 1)
+    val test = Meme {
+        a = 10,
+        b = 40
+    }
 
-    val a: i8 = meme(1, 2)
-    val c: i8 = 100 + 100
-    var d = 10
-    match a {
+    match test.a {
         4 -> 20,
-        val b -> 10
+        10 -> 13
     }
 }

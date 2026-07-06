@@ -48,6 +48,25 @@ pub enum TyCheckError {
         #[label("no such field here...")]
         span: SourceSpan,
     },
+    #[error("missing field `{field:?}` for type `{ty:?}``")]
+    #[diagnostic(code(ty_check::missing_filed))]
+    MissingField {
+        ty: String,
+        field: String,
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("no such field here...")]
+        span: SourceSpan,
+    },
+    #[error("duplicating field for type `{ty:?}``")]
+    #[diagnostic(code(ty_check::duplicated_field))]
+    DuplicateField {
+        ty: String,
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("no such field here...")]
+        span: SourceSpan,
+    },
     #[error("type `{ty:?}` is not a struct")]
     #[diagnostic(code(ty_check::not_a_struct))]
     NotAStruct {

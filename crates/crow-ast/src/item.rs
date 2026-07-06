@@ -51,6 +51,7 @@ pub struct AltField {
 /// Represents rec item
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AdtRec {
+    pub span: Span,
     pub name: String,
     pub fields: Vec<RecField>,
 }

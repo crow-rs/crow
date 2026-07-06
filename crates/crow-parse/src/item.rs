@@ -39,6 +39,7 @@ impl<'s> Parser<'s> {
 
     // Parses rec item kind
     fn rec_item_kind(&mut self) -> ItemKind {
+        let start_span = self.peek().span.clone();
         // Bumping `rec`
         self.bump();
 
@@ -52,8 +53,10 @@ impl<'s> Parser<'s> {
             TokenKind::Comma,
             |p| p.rec_field(),
         );
+        let end_span = self.prev().span.clone();
 
         ItemKind::Rec(AdtRec {
+            span: start_span + end_span,
             name,
             fields,
         })

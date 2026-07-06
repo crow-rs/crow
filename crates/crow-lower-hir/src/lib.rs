@@ -81,6 +81,22 @@ impl LoweringCtxt {
 
         // Lowering expresion
         match &expr.kind {
+            ExprKind::RecCtor(_, initializators) => {
+                let res = self.resolve
+                    .resolutions
+                    .get(&expr.span)
+                    .cloned()
+                    .unwrap_or(Res::Err);
+
+                let fields: Vec<(String, ExprId)> = initializators.iter()
+                    .map(|init| {
+                        let value_id = self.lower_expr(&init.rhs);
+                        (init.lhs.clone(), value_id)
+                    })
+                    .collect();
+
+                self.alloc_expr(span, HirExprKind::RecCtor { res, fields })
+            }
             ExprKind::Lit(lit) => {
                 self.alloc_expr(span, HirExprKind::Lit(lit.clone()))
             }
