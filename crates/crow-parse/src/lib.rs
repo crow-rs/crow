@@ -15,6 +15,7 @@ use crow_lex::{
     token::{Token, TokenKind},
 };
 use miette::NamedSource;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 /// Parser is struct that converts a stream of tokens
@@ -37,7 +38,7 @@ pub struct Parser<'s> {
     /// (used for predictive parsing)
     next: Option<Token>,
 
-    lookahead: Option<Token>,
+    overflow: VecDeque<Token>,
 }
 
 /// Implementation
@@ -55,7 +56,7 @@ impl<'s> Parser<'s> {
             previous: None,
             current,
             next,
-            lookahead: None,
+            overflow: VecDeque::new(),
         }
     }
 
@@ -153,7 +154,7 @@ impl<'s> Parser<'s> {
             }),
         }
     }
-    
+
     pub(crate) fn peek_next(&self) -> Option<&Token> {
         self.next.as_ref()
     }
@@ -162,13 +163,16 @@ impl<'s> Parser<'s> {
         match n {
             0 => self.current.as_ref(),
             1 => self.next.as_ref(),
-            2 => {
-                if self.lookahead.is_none() {
-                    self.lookahead = self.lexer.next();
+            n => {
+                let idx = n - 2;
+                while self.overflow.len() <= idx {
+                    match self.lexer.next() {
+                        Some(tok) => self.overflow.push_back(tok),
+                        None => break,
+                    }
                 }
-                self.lookahead.as_ref()
+                self.overflow.get(idx)
             }
-            _ => None,
         }
     }
 
@@ -213,7 +217,7 @@ impl<'s> Parser<'s> {
         let prev = self.current.take();
         self.previous = prev.clone();
         self.current = self.next.take();
-        self.next = self.lookahead.take().or_else(|| self.lexer.next());
+        self.next = self.overflow.pop_front().or_else(|| self.lexer.next());
         prev.unwrap()
     }
 }
