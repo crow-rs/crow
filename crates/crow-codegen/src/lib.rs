@@ -32,7 +32,8 @@ pub struct Codegen<'llvm, 'mir> {
 struct FnCodegen<'a, 'llvm, 'mir> {
     cg: &'a mut Codegen<'llvm, 'mir>,
     body: &'a MirBody,
-    locals: Vec<PointerValue<'llvm>>,
+    locals: Vec<Option<PointerValue<'llvm>>>,
+    values: HashMap<usize, BasicValueEnum<'llvm>>,
     blocks: Vec<LlvmBlock<'llvm>>,
 }
 
@@ -108,6 +109,7 @@ impl<'llvm, 'mir> Codegen<'llvm, 'mir> {
             cg: self,
             body,
             locals: Vec::new(),
+            values: HashMap::new(),
             blocks: Vec::new(),
         };
         fcg.codegen(fv);
@@ -122,17 +124,23 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
         let entry = self.ctx().append_basic_block(fv, "entry");
         self.builder().position_at_end(entry);
 
+        let needs_alloca = locals_needing_alloca(self.body);
+
         for (i, decl) in self.body.locals.iter().enumerate() {
-            let ty = self.cg.types.construct_type(self.cg.tcx, &decl.ty);
-            let default_name = format!("_{i}");
-            let name = decl.name.as_deref().unwrap_or(&default_name);
-            let alloca = self.builder().build_alloca(ty, name).unwrap();
-            self.locals.push(alloca);
+            if needs_alloca[i] {
+                let ty = self.cg.types.construct_type(self.cg.tcx, &decl.ty);
+                let default_name = format!("_{i}");
+                let name = decl.name.as_deref().unwrap_or(&default_name);
+                let alloca = self.builder().build_alloca(ty, name).unwrap();
+                self.locals.push(Some(alloca));
+            } else {
+                self.locals.push(None);
+            }
         }
 
         for i in 0..self.body.arg_count {
             let arg = fv.get_nth_param(i as u32).unwrap();
-            let alloca = self.locals[i + 1]; // _1 .. _N
+            let alloca = self.locals[i + 1].unwrap(); // _1 .. _N
             self.builder().build_store(alloca, arg).unwrap();
         }
 
@@ -161,8 +169,12 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
             Statement::Assign(place, rvalue) => {
                 let dest_ty = self.place_ty(place);
                 let val = self.codegen_rvalue(rvalue, &dest_ty);
-                let ptr = self.codegen_place_ptr(place);
-                self.builder().build_store(ptr, val).unwrap();
+                if place.proj.is_empty() && self.locals[place.local.index()].is_none() {
+                    self.values.insert(place.local.index(), val);
+                } else {
+                    let ptr = self.codegen_place_ptr(place);
+                    self.builder().build_store(ptr, val).unwrap();
+                }
             }
             Statement::StorageLive(_) | Statement::StorageDead(_) | Statement::Nop => {
                 // Хинты для оптимизатора, LLVM справляется через mem2reg
@@ -210,8 +222,12 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
                     .unwrap();
 
                 if let Some(ret_val) = call_val.try_as_basic_value().left() {
-                    let dest_ptr = self.codegen_place_ptr(dest);
-                    self.builder().build_store(dest_ptr, ret_val).unwrap();
+                    if dest.proj.is_empty() && self.locals[dest.local.index()].is_none() {
+                        self.values.insert(dest.local.index(), ret_val);
+                    } else {
+                        let dest_ptr = self.codegen_place_ptr(dest);
+                        self.builder().build_store(dest_ptr, ret_val).unwrap();
+                    }
                 }
 
                 self.builder()
@@ -251,7 +267,7 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
                     self.builder().build_return(None).unwrap();
                 } else {
                     let llvm_ty = self.cg.types.construct_type(self.cg.tcx, &ret_ty);
-                    let local_ptr = self.locals[0];
+                    let local_ptr = self.locals[0].unwrap();
                     let ret_val = self.cg.builder.build_load(llvm_ty, local_ptr, "ret").unwrap();
                     self.cg.builder.build_return(Some(&ret_val)).unwrap();
                 }
@@ -438,6 +454,11 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
     fn codegen_operand(&mut self, op: &Operand) -> BasicValueEnum<'llvm> {
         match op {
             Operand::Copy(place) => {
+                if place.proj.is_empty() {
+                    if let Some(val) = self.values.get(&place.local.index()) {
+                        return *val;
+                    }
+                }
                 let ptr = self.codegen_place_ptr(place);
                 let p_ty = self.place_ty(place);
                 let ty = self.cg.types.construct_type(self.cg.tcx, &p_ty);
@@ -448,7 +469,7 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
     }
 
     fn codegen_place_ptr(&mut self, place: &Place) -> PointerValue<'llvm> {
-        let mut ptr = self.locals[place.local.index()];
+        let mut ptr = self.locals[place.local.index()].unwrap();
         let mut current_ty = self.body.locals[place.local.index()].ty.clone();
         let mut active_variant: u32 = 0;
 
@@ -456,11 +477,36 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
             match proj {
                 Projection::Downcast(v) => {
                     active_variant = *v;
+                    if let Ty::Adt(def_id, _) = &current_ty {
+                        let adt_ty = self.cg.types.construct_type(self.cg.tcx, &current_ty);
+                        let payload_ptr = self.cg.builder
+                            .build_struct_gep(adt_ty, ptr, 1, "payload_ptr")
+                            .unwrap();
+                        let field_tys: Vec<BasicTypeEnum<'llvm>> = self.cg.tcx.adt(*def_id)
+                            .variants[active_variant as usize]
+                            .fields
+                            .iter()
+                            .map(|f| self.cg.types.construct_type(self.cg.tcx, f))
+                            .collect();
+                        let variant_ty = self.ctx().struct_type(&field_tys, false);
+                        ptr = self.cg.builder
+                            .build_pointer_cast(payload_ptr, variant_ty.ptr_type(inkwell::AddressSpace::default()), "variant_ptr")
+                            .unwrap();
+                    }
                 }
                 Projection::Field(idx) => {
-                    let llvm_ty = self.cg.types.construct_type(self.cg.tcx, &current_ty);
+                    let field_tys: Vec<BasicTypeEnum<'llvm>> = match &current_ty {
+                        Ty::Adt(def_id, _) => self.cg.tcx.adt(*def_id)
+                            .variants[active_variant as usize]
+                            .fields
+                            .iter()
+                            .map(|f| self.cg.types.construct_type(self.cg.tcx, f))
+                            .collect(),
+                        _ => panic!("field on non-ADT"),
+                    };
+                    let variant_ty = self.ctx().struct_type(&field_tys, false);
                     ptr = self.cg.builder
-                        .build_struct_gep(llvm_ty, ptr, *idx, "field_ptr")
+                        .build_struct_gep(variant_ty, ptr, *idx, "field_ptr")
                         .unwrap();
                     current_ty = match &current_ty {
                         Ty::Adt(def_id, _) => {
@@ -469,6 +515,7 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
                         }
                         _ => panic!("field on non-ADT"),
                     };
+                    active_variant = 0;
                 }
             }
         }
@@ -560,6 +607,74 @@ fn is_signed_int(ty: &Ty) -> bool {
         Ty::Int(ity) => is_signed(ity),
         _ => false,
     }
+}
+
+fn locals_needing_alloca(body: &MirBody) -> Vec<bool> {
+    let mut needs_alloca = vec![false; body.locals.len()];
+    let mut assign_count = vec![0u32; body.locals.len()];
+
+    for i in 0..=body.arg_count {
+        needs_alloca[i] = true;
+    }
+
+    let mark_place = |place: &Place, needs_alloca: &mut Vec<bool>| {
+        if !place.proj.is_empty() {
+            needs_alloca[place.local.index()] = true;
+        }
+    };
+
+    let mark_operand = |op: &Operand, needs_alloca: &mut Vec<bool>| {
+        if let Operand::Copy(place) = op {
+            mark_place(place, needs_alloca);
+        }
+    };
+
+    for bb in &body.blocks {
+        for stmt in &bb.stmts {
+            match stmt {
+                Statement::Assign(place, rvalue) => {
+                    mark_place(place, &mut needs_alloca);
+                    assign_count[place.local.index()] += 1;
+                    match rvalue {
+                        Rvalue::Use(op) | Rvalue::UnaryOp(_, op) => mark_operand(op, &mut needs_alloca),
+                        Rvalue::BinaryOp(_, lhs, rhs) => {
+                            mark_operand(lhs, &mut needs_alloca);
+                            mark_operand(rhs, &mut needs_alloca);
+                        }
+                        Rvalue::Aggregate(_, ops) => {
+                            for op in ops {
+                                mark_operand(op, &mut needs_alloca);
+                            }
+                        }
+                        Rvalue::Discriminant(inner) => mark_place(inner, &mut needs_alloca),
+                        Rvalue::Cast(_, op, _) => mark_operand(op, &mut needs_alloca),
+                    }
+                }
+                Statement::StorageLive(_) | Statement::StorageDead(_) | Statement::Nop => {}
+            }
+        }
+
+        match &bb.term {
+            Terminator::SwitchInt { discr, .. } => mark_operand(discr, &mut needs_alloca),
+            Terminator::Call { args, dest, .. } => {
+                for arg in args {
+                    mark_operand(arg, &mut needs_alloca);
+                }
+                mark_place(dest, &mut needs_alloca);
+                assign_count[dest.local.index()] += 1;
+            }
+            Terminator::Assert { cond, .. } => mark_operand(cond, &mut needs_alloca),
+            Terminator::Goto(_) | Terminator::Return | Terminator::Unreachable => {}
+        }
+    }
+
+    for (i, decl) in body.locals.iter().enumerate() {
+        if decl.name.is_some() || assign_count[i] != 1 {
+            needs_alloca[i] = true;
+        }
+    }
+
+    needs_alloca
 }
 
 fn specialize_body(body: &MirBody, substs: &Substs) -> MirBody {
