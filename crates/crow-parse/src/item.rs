@@ -2,7 +2,7 @@
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
     atom::{Publicity, TypeHint}, item::{
-        AdtAlt, AdtRec, AltField, Enum, Fun, Item, ItemKind, RecField, Use, UseKind, UsePath, Variant,
+        AdtAlt, AdtRec, AltField, Enum, Fun, Item, ItemKind, NativeFun, RecField, Use, UseKind, UsePath, Variant,
     },
 };
 use crow_common::bail;
@@ -132,15 +132,21 @@ impl<'s> Parser<'s> {
     }
 
     // Parses function item kind
-    fn fun_item_kind(&mut self) -> ItemKind {
+    fn fun_item_kind(&mut self, is_native: bool) -> ItemKind {
         // Bumping `pure` if specified
         let start_span = self.peek().span.clone();
+
+        //if fn is native - bump 'native'
+        if is_native {
+            self.bump();
+        }
 
         // Bumping `fun`
         self.expect(TokenKind::Fun);
 
         // Parsing signature
-        let name = self.expect(TokenKind::Id).lexeme;
+        let name = self.expect(TokenKind::Id);
+
         let generics = self.generic_params();
         let params = self.params();
         let effects = self.effects();
@@ -148,21 +154,48 @@ impl<'s> Parser<'s> {
             self.bump();
             self.type_hint()
         } else {
-            TypeHint::Infer
+            if is_native {
+                TypeHint::Unit(start_span.clone())
+            } else {
+                TypeHint::Infer
+            }
         };
 
-        // Parsing body
-        let block = self.block();
+        if !is_native {
+            // Parsing body
+            let block = self.block();
+            let end_span = self.prev().span.clone();
+
+            return ItemKind::Fun(Fun {
+                span: start_span + end_span,
+                name: name.lexeme,
+                generics,
+                params,
+                ret,
+                block,
+                effects,
+            })
+        }
+
+        if !generics.is_empty() {
+            bail!(ParseError::GenericNative { name: name.lexeme, src: start_span.0.clone(), span: name.span.1.clone().into() })
+        }
+
+        let link_name = if self.check(TokenKind::Eq) {
+            self.bump();
+            self.expect(TokenKind::String).lexeme
+        } else {
+            name.lexeme.clone()
+        };
+
         let end_span = self.prev().span.clone();
 
-        ItemKind::Fun(Fun {
+        ItemKind::Native(NativeFun {
+            name: name.lexeme,
             span: start_span + end_span,
-            name,
-            generics,
             params,
             ret,
-            block,
-            effects,
+            body: link_name
         })
     }
 
@@ -224,7 +257,8 @@ impl<'s> Parser<'s> {
             TokenKind::Rec => self.rec_item_kind(),
             TokenKind::Alt => self.alt_item_kind(),
             TokenKind::Enum => self.enum_item_kind(),
-            TokenKind::Fun | TokenKind::Pure => self.fun_item_kind(),
+            TokenKind::Fun | TokenKind::Native => self.fun_item_kind(matches!(tk.kind, TokenKind::Native)),
+
             _ => bail!(ParseError::UnexpectedItemToken {
                 got: tk.kind,
                 src: self.source.clone(),

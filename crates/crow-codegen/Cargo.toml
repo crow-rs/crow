@@ -9,6 +9,8 @@ crow-tycheck ={ path = "../crow-tycheck"}
 crow-mir-monomorph = { path = "../crow-mir-monomorph" }
 crow-resolving = { path = "../crow-resolving" }
 inkwell = { version = "0.5.0", features = ["llvm18-0"] }
+miette = { git = "https://github.com/crow-rs/miette", features = ["fancy"] }
+thiserror = "2.0.18"
 
 [dependencies.llvm-sys]
 version = "180.0.0" # Match your LLVM major version

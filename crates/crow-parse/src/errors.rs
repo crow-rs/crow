@@ -68,4 +68,16 @@ pub enum ParseError {
         #[label("while parsing that...")]
         span: SourceSpan,
     },
+
+    #[error("native symbols unsupports generic variants. Ivalid defenition name: `{name:?}`")]
+    #[diagnostic(
+        code(parse::generic_native),
+    )]
+    GenericNative {
+        name: String,
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("got unexpected generic here...")]
+        span: SourceSpan,
+    },
 }

@@ -16,10 +16,10 @@ pub enum TokenKind {
     Fun,         // `fun` keyword
     Match,       // `match` keyword
     Pub,         // `pub` keyword
+    Native,      // 'native' keyword
     As,          // `as` keyword
     For,         // `for` keyword
     None,        // `none` keyword
-    Pure,        // `pure` keyword
     Todo,        // `todo` keyword
     Panic,       // `panic` keyword
     Const,       // `const` keyword

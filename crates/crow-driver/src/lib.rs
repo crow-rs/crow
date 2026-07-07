@@ -18,7 +18,6 @@ use crow_mir_passes::mir_optimize;
 use crow_parse::Parser;
 use crow_resolving::resolver::Resolver;
 use crow_tycheck::typeck::typeck_module;
-use inkwell::{OptimizationLevel, context::Context, targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple}};
 use miette::NamedSource;
 use petgraph::{Direction, prelude::DiGraphMap};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -292,14 +291,14 @@ impl Driver {
 
         let items = mono.into_items();
 
-        for item in &items {
-            match item {
-                MonoItem::Const(id, ty) => println!("monomorphized const with id: {}, to types: {:?}", id, ty),
-                MonoItem::Fn(inst) => println!("monomorphized fn with id: {}, to types: {:?}", inst.fn_id, inst.substs)
-            }
-        }
+        // for item in &items {
+        //     match item {
+        //         MonoItem::Const(id, ty) => println!("monomorphized const with id: {}, to types: {:?}", id, ty),
+        //         MonoItem::Fn(inst) => println!("monomorphized fn with id: {}, to types: {:?}", inst.fn_id, inst.substs)
+        //     }
+        // }
 
-        println!("Total monomorphised: {:#?}", items.len());
+        // println!("Total monomorphised: {:#?}", items.len());
 
 
         let build_cfg = TargetConfig::host();

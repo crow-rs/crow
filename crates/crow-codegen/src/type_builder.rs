@@ -20,7 +20,13 @@ impl<'llvm> TypeCache<'llvm> {
             Ty::Bool => self.ctx.bool_type().into(),
             Ty::Int(ity) => self.int_type(ity).into(),
             Ty::Float(fty) => self.float_type(fty).into(),
-            Ty::String => self.ctx.ptr_type(inkwell::AddressSpace::default()).into(),
+            Ty::String => self.ctx.struct_type(
+                &[
+                    self.ctx.ptr_type(inkwell::AddressSpace::default()).into(),
+                    self.ctx.i64_type().into(),
+                ],
+                false,
+            ).into(),
             Ty::Unit => self.ctx.i8_type().into(),
             Ty::Never => self.ctx.i8_type().into(),
             Ty::Adt(def_id, _) => self.adt_type(tcx, *def_id).into(),
@@ -82,7 +88,7 @@ impl<'llvm> TypeCache<'llvm> {
             Ty::Int(IntTy::I64 | IntTy::U64) => 8,
             Ty::Float(FloatTy::F32) => 4,
             Ty::Float(FloatTy::F64) => 8,
-            Ty::String => 8,
+            Ty::String => 16,
             Ty::Unit | Ty::Never => 1,
             Ty::Adt(def_id, _) => {
                 let adt = tcx.adt(*def_id);

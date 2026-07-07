@@ -393,10 +393,10 @@ impl<'s> Lexer<'s> {
             "match" => TokenKind::Match,
             "as" => TokenKind::As,
             "for" => TokenKind::For,
-            "pure" => TokenKind::Pure,
             "todo" => TokenKind::Todo,
             "panic" => TokenKind::Panic,
             "const" => TokenKind::Const,
+            "native" => TokenKind::Native,
             _ => TokenKind::Id,
         }
     }

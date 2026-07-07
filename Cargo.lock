@@ -146,6 +146,8 @@ dependencies = [
  "crow-tycheck",
  "inkwell",
  "llvm-sys",
+ "miette",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -174,7 +176,6 @@ dependencies = [
  "crow-parse",
  "crow-resolving",
  "crow-tycheck",
- "inkwell",
  "miette",
  "petgraph",
  "rayon",
