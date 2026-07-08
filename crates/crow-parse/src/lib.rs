@@ -34,11 +34,8 @@ pub struct Parser<'s> {
     /// Current token under inspection
     pub(crate) current: Option<Token>,
 
-    /// Lookahead token
-    /// (used for predictive parsing)
-    next: Option<Token>,
-
-    overflow: VecDeque<Token>,
+    /// Lookahead queue
+    lookahead: VecDeque<Token>,
 }
 
 /// Implementation
@@ -49,14 +46,12 @@ impl<'s> Parser<'s> {
         mut lexer: Lexer<'s>,
     ) -> Self {
         let current = lexer.next();
-        let next = lexer.next();
         Self {
             source,
             lexer,
             previous: None,
             current,
-            next,
-            overflow: VecDeque::new(),
+            lookahead: VecDeque::new(),
         }
     }
 
@@ -155,23 +150,24 @@ impl<'s> Parser<'s> {
         }
     }
 
-    pub(crate) fn peek_next(&self) -> Option<&Token> {
-        self.next.as_ref()
+    /// Retrieves next token
+    pub(crate) fn next(&mut self) -> Option<&Token> {
+        self.peek_nth(1)
     }
 
+    /// Peeks `n` token after current
     pub(crate) fn peek_nth(&mut self, n: usize) -> Option<&Token> {
         match n {
             0 => self.current.as_ref(),
-            1 => self.next.as_ref(),
             n => {
-                let idx = n - 2;
-                while self.overflow.len() <= idx {
+                let idx = n - 1;
+                while self.lookahead.len() <= idx {
                     match self.lexer.next() {
-                        Some(tok) => self.overflow.push_back(tok),
+                        Some(tok) => self.lookahead.push_back(tok),
                         None => break,
                     }
                 }
-                self.overflow.get(idx)
+                self.lookahead.get(idx)
             }
         }
     }
@@ -216,8 +212,8 @@ impl<'s> Parser<'s> {
     pub(crate) fn bump(&mut self) -> Token {
         let prev = self.current.take();
         self.previous = prev.clone();
-        self.current = self.next.take();
-        self.next = self.overflow.pop_front().or_else(|| self.lexer.next());
+        self.current =
+            self.lookahead.pop_front().or_else(|| self.lexer.next());
         prev.unwrap()
     }
 }

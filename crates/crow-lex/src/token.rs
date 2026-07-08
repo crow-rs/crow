@@ -7,8 +7,8 @@ use std::fmt::Debug;
 pub enum TokenKind {
     Use,         // `use` keyword
     Enum,        // `enum` keyword
-    Rec,         // adt rec keywword
-    Alt,         // adt sum type keyword
+    Rec,         // `rec` keywword
+    Alt,         // `alt` keyword
     Val,         // `val` keyword
     Var,         // `var` keyword
     If,          // `if` keyword

@@ -1,7 +1,8 @@
 /// Imports
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
-    atom::{BinOp, Lit, UnOp}, expr::{Case, Expr, ExprKind, Initializator},
+    atom::{BinOp, Lit, UnOp},
+    expr::{Case, Expr, ExprKind, Initializator},
 };
 use crow_common::bail;
 use crow_lex::token::TokenKind;
@@ -67,14 +68,20 @@ impl<'s> Parser<'s> {
                 continue;
             }
 
+            // Checking for rec constructor
             if self.check(TokenKind::Lbrace) {
-                 let is_rec = self.peek_nth(1).map_or(false, |t| t.kind == TokenKind::Id)
-                    && self.peek_nth(2).map_or(false, |t| t.kind == TokenKind::Eq);
+                let is_rec = self
+                    .peek_nth(1)
+                    .map_or(false, |t| t.kind == TokenKind::Id)
+                    && self
+                        .peek_nth(2)
+                        .map_or(false, |t| t.kind == TokenKind::Eq);
 
-                if is_rec
-                {
+                if is_rec {
                     let initializators = self.sep_by(
-                        TokenKind::Lbrace, TokenKind::Rbrace, TokenKind::Comma,
+                        TokenKind::Lbrace,
+                        TokenKind::Rbrace,
+                        TokenKind::Comma,
                         |p| {
                             let name = p.expect(TokenKind::Id);
                             p.expect(TokenKind::Eq);
@@ -89,14 +96,13 @@ impl<'s> Parser<'s> {
                     let end_span = self.prev().span.clone();
                     result = Expr {
                         span: start_span.clone() + end_span,
-                        kind: ExprKind::RecCtor(id.clone(), initializators),
+                        kind: ExprKind::Rec(id.clone(), initializators),
                     };
                     continue;
                 }
                 break;
             }
 
-            
             // Breaking loop
             break;
         }

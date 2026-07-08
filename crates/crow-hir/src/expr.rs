@@ -33,8 +33,8 @@ pub enum HirExprKind {
     },
     Block(Vec<StmtId>),
     Diverge(DivergeKind, Option<ExprId>),
-    RecCtor {
-        res: Res,                          
+    Rec {
+        res: Res,
         fields: Vec<(String, ExprId)>,
     },
 }

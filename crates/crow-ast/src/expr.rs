@@ -47,7 +47,7 @@ pub struct Case {
 pub struct Initializator {
     pub span: Span,
     pub lhs: String,
-    pub rhs: Expr
+    pub rhs: Expr,
 }
 
 /// Defines expression kind
@@ -86,8 +86,8 @@ pub enum ExprKind {
     /// Represents paren expression
     Paren(Box<Expr>),
 
-    //record constructor expression
-    RecCtor(String, Vec<Initializator>),
+    // Record expression
+    Rec(String, Vec<Initializator>),
 
     /// Block expression
     Block(Vec<Stmt>),

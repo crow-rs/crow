@@ -1,19 +1,23 @@
 /// Imports
 use crate::{
-    errors::ResolverErrors, table::{
-        DefId, DefKind, FieldDef, LocalId, Res, ResolveTable, TypeParamDef, VariantDef,
+    errors::ResolverErrors,
+    table::{
+        DefId, DefKind, FieldDef, LocalId, Res, ResolveTable,
+        TypeParamDef, VariantDef,
     },
 };
 use crow_ast::{
-    atom::{Mutability, TypeHint}, expr::{Case, Expr, ExprKind, Pat, PatKind}, item::{
-        AdtRec, Const, Enum, Fun, ItemKind, Module, NativeFun, RecField, Variant,
-    }, stmt::{Stmt, StmtKind},
+    atom::{Mutability, TypeHint},
+    expr::{Case, Expr, ExprKind, Pat, PatKind},
+    item::{
+        AdtRec, Const, Enum, Fun, ItemKind, Module, NativeFun, RecField,
+        Variant,
+    },
+    stmt::{Stmt, StmtKind},
 };
 use crow_common::{bug, span::Span};
 use crow_fresh::Freshen;
-use std::{
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 /// Defines single rib
 type Rib = HashMap<String, Res>;
@@ -169,7 +173,11 @@ impl Resolver {
     }
 
     /// Resolves struct fields
-    fn resolve_struct_fields(&mut self, root_id: DefId, fields: &[RecField]) {
+    fn resolve_struct_fields(
+        &mut self,
+        root_id: DefId,
+        fields: &[RecField],
+    ) {
         let fields: Vec<FieldDef> = fields
             .iter()
             .enumerate()
@@ -298,11 +306,14 @@ impl Resolver {
             let tp_def_id = DefId(self.freshen_defs.fresh());
             self.table.def_kinds.insert(tp_def_id, DefKind::TypeParam);
             self.table.def_names.insert(tp_def_id, tp.clone());
-            self.table.type_params.insert(tp_def_id, TypeParamDef {
-                name: tp.clone(),
-                index: index as u32,
-                parent: def_id, 
-            });
+            self.table.type_params.insert(
+                tp_def_id,
+                TypeParamDef {
+                    name: tp.clone(),
+                    index: index as u32,
+                    parent: def_id,
+                },
+            );
         }
 
         self.top_level
@@ -345,7 +356,7 @@ impl Resolver {
         for item in &module.items {
             match &item.kind {
                 ItemKind::Rec(s) => self.resolve_struct(&item.span, s),
-                ItemKind::Alt(s) => todo!(), //self.resolve_struct(&item.span, &s.clone()), 
+                ItemKind::Alt(s) => todo!(), //self.resolve_struct(&item.span, &s.clone()),
                 ItemKind::Enum(e) => self.resolve_enum(&item.span, e),
                 ItemKind::Fun(f) => self.resolve_function(&item.span, f),
                 ItemKind::Native(n) => {
@@ -397,7 +408,7 @@ impl Resolver {
     /// Resolves expression
     fn resolve_expr(&mut self, expr: &Expr) {
         match &expr.kind {
-            ExprKind::RecCtor(rec_name, initializators) => {
+            ExprKind::Rec(rec_name, initializators) => {
                 self.resolve_local(rec_name, expr.span.clone());
                 for init in initializators {
                     self.resolve_expr(&init.rhs);
@@ -594,13 +605,19 @@ impl Resolver {
                         _ => continue,
                     };
 
-                    let tps: Vec<(String, DefId)> = self.table.type_params.iter()
+                    let tps: Vec<(String, DefId)> = self
+                        .table
+                        .type_params
+                        .iter()
                         .filter(|(_, tp)| tp.parent == fn_def_id)
                         .map(|(did, tp)| (tp.name.clone(), *did))
                         .collect();
 
                     for (name, did) in tps {
-                        self.ribs.insert(name, Res::Def(DefKind::TypeParam, did));
+                        self.ribs.insert(
+                            name,
+                            Res::Def(DefKind::TypeParam, did),
+                        );
                     }
 
                     for param in &f.params {
@@ -634,7 +651,8 @@ impl Resolver {
                     }
                     self.ribs.pop();
                 }
-                ItemKind::Alt(s) => { // todo
+                ItemKind::Alt(s) => {
+                    // todo
                     todo!()
                 }
                 ItemKind::Enum(e) => {

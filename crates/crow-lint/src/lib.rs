@@ -9,7 +9,10 @@ use crow_hir::{
     pat::{HirPat, HirPatKind},
     stmt::{HirStmt, HirStmtKind},
 };
-use crow_tycheck::{ty::Ty, typeck::{TypeckBodies, TypeckOutput}};
+use crow_tycheck::{
+    ty::Ty,
+    typeck::{TypeckBody, TypeckOutput},
+};
 
 pub mod warnings;
 
@@ -47,7 +50,8 @@ impl<'hir> LintCtxt<'hir> {
 impl<'hir> LintCtxt<'hir> {
     pub fn expr_ty(&self, id: ExprId) -> Option<&Ty> {
         self.hir_types.bodies[self.body.id.0 as usize]
-            .expr_tys.get(&id)
+            .expr_tys
+            .get(&id)
     }
 
     pub fn fn_name(&self, callee_id: ExprId) -> String {
@@ -129,7 +133,7 @@ impl LintDriver {
                 diags: Vec::new(),
                 body,
                 hir_types: tycx,
-                hir: hir
+                hir: hir,
             };
 
             for p in &mut self.passes {
@@ -159,7 +163,7 @@ impl LintDriver {
         }
 
         match &expr.kind {
-            HirExprKind::RecCtor { fields, .. } => {
+            HirExprKind::Rec { fields, .. } => {
                 for field in fields {
                     self.visit_expr(cx, field.1);
                 }
@@ -263,13 +267,17 @@ impl LintDriver {
 pub struct UnusedResultLint;
 
 impl LintPass for UnusedResultLint {
-    fn id(&self) -> LintId { LintId::UnusedResult }
+    fn id(&self) -> LintId {
+        LintId::UnusedResult
+    }
 
     fn enter_stmt(&mut self, cx: &mut LintCtxt, stmt: &HirStmt) {
         if let HirStmtKind::Expr(eid) = &stmt.kind {
             let expr = cx.expr(*eid);
             if let HirExprKind::Call(callee_id, _) = &expr.kind {
-                if cx.expr_ty(*eid).is_some_and(|ty| *ty == Ty::Unit) { return; }
+                if cx.expr_ty(*eid).is_some_and(|ty| *ty == Ty::Unit) {
+                    return;
+                }
                 cx.warn(LinterWarnings::UnusedResult {
                     stmt: cx.fn_name(*callee_id),
                     src: stmt.span.0.clone().into(),

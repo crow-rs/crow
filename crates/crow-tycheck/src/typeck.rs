@@ -15,8 +15,8 @@ use crow_hir::ty::{HirTy, HirTyKind};
 use crow_resolving::table::{DefId, DefKind, LocalId, Res};
 use std::collections::{HashMap, HashSet};
 
-/// Typeck bodies
-pub struct TypeckBodies {
+/// Defines typeck result for single body
+pub struct TypeckBody {
     pub expr_tys: HashMap<ExprId, Ty>,
     pub local_tys: HashMap<LocalId, Ty>,
     pub pat_tys: HashMap<PatId, Ty>,
@@ -25,7 +25,7 @@ pub struct TypeckBodies {
 
 /// Typeck results
 pub struct TypeckOutput {
-    pub bodies: Vec<TypeckBodies>,
+    pub bodies: Vec<TypeckBody>,
     pub prim_tys: HashMap<DefId, Ty>,
     //pub adt_field_tys: HashMap<DefId, Vec<Vec<Ty>>>,
 }
@@ -83,7 +83,7 @@ impl<'hir> TypeChecker<'hir> {
             pat_tys: HashMap::new(),
             errors: Vec::new(),
             primitive_tys: HashMap::new(),
-            expr_substs: HashMap::new()
+            expr_substs: HashMap::new(),
         }
     }
 
@@ -93,12 +93,14 @@ impl<'hir> TypeChecker<'hir> {
             self.errors.push(kind);
         }
     }
-    
+
+    /// Defines local types
     fn define_local_types(&mut self) {
         for item_kind in &self.hir.resolve.def_kinds {
             if matches!(item_kind.1, DefKind::BuiltinType) {
-                let item_name = self.hir.resolve.def_names.get(item_kind.0).unwrap();
-                let ty = self.resolve_builtin_types_by_name(item_name);
+                let item_name =
+                    self.hir.resolve.def_names.get(item_kind.0).unwrap();
+                let ty = self.resolve_builtin_type_by_name(item_name);
                 self.primitive_tys.insert(item_kind.0.clone(), ty);
             }
         }
@@ -115,13 +117,13 @@ impl<'hir> TypeChecker<'hir> {
         // Checking bodies
         let bodies = self.late_pass();
 
-        TypeckOutput { 
-            bodies, 
-            prim_tys: self.primitive_tys.clone()
-            //adt_field_tys: () 
+        TypeckOutput {
+            bodies,
+            prim_tys: self.primitive_tys.clone(), //adt_field_tys: ()
         }
     }
 
+    /// Substitutes type
     fn subst_ty(&self, ty: &Ty, substs: &[Ty]) -> Ty {
         match ty {
             Ty::Param(_, idx) => substs[*idx as usize].clone(),
@@ -137,11 +139,16 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
+    /// Instantaiates signature
     fn instantiate_sig(&mut self, sig: &FnSig) -> (Vec<Ty>, Ty, Vec<Ty>) {
-        let substs: Vec<Ty> = sig.type_params.iter()
+        let substs: Vec<Ty> = sig
+            .type_params
+            .iter()
             .map(|_| self.icx.fresh_var())
             .collect();
-        let params = sig.params.iter()
+        let params = sig
+            .params
+            .iter()
             .map(|ty| self.subst_ty(ty, &substs))
             .collect();
         let ret = self.subst_ty(&sig.ret, &substs);
@@ -153,7 +160,9 @@ impl<'hir> TypeChecker<'hir> {
         for item in self.hir.items.vec() {
             match &item.kind {
                 HirItemKind::Fun(f) => {
-                    let type_params: Vec<(DefId, u32)> = f.type_params.iter()
+                    let type_params: Vec<(DefId, u32)> = f
+                        .type_params
+                        .iter()
                         .map(|tp| (tp.def_id, tp.idx))
                         .collect();
                     let params: Vec<Ty> = f
@@ -162,8 +171,14 @@ impl<'hir> TypeChecker<'hir> {
                         .map(|p| self.lower_hir_ty(&p.ty))
                         .collect();
                     let ret = self.lower_hir_ty(&f.ret);
-                    self.fn_sigs
-                        .insert(item.def_id, FnSig { type_params, params, ret });
+                    self.fn_sigs.insert(
+                        item.def_id,
+                        FnSig {
+                            type_params,
+                            params,
+                            ret,
+                        },
+                    );
                 }
                 HirItemKind::Native(n) => {
                     let params: Vec<Ty> = n
@@ -172,8 +187,14 @@ impl<'hir> TypeChecker<'hir> {
                         .map(|p| self.lower_hir_ty(&p.ty))
                         .collect();
                     let ret = self.lower_hir_ty(&n.ret);
-                    self.fn_sigs
-                        .insert(item.def_id, FnSig { type_params: vec![], params, ret });
+                    self.fn_sigs.insert(
+                        item.def_id,
+                        FnSig {
+                            type_params: vec![],
+                            params,
+                            ret,
+                        },
+                    );
                 }
                 HirItemKind::Const(c) => {
                     let ty = self.lower_hir_ty(&c.ty);
@@ -185,7 +206,7 @@ impl<'hir> TypeChecker<'hir> {
     }
 
     /// Late pass: check all the bodies
-    fn late_pass(&mut self) -> Vec<TypeckBodies> {
+    fn late_pass(&mut self) -> Vec<TypeckBody> {
         // Preparing results
         let mut results = Vec::new();
 
@@ -209,8 +230,15 @@ impl<'hir> TypeChecker<'hir> {
     /// Lowers hir type
     fn lower_hir_ty(&mut self, hir_ty: &HirTy) -> Ty {
         match &hir_ty.kind {
-             HirTyKind::Res { res: Res::Def(DefKind::TypeParam, did), .. } => {
-                let tp = self.hir.resolve.type_params.get(did)
+            HirTyKind::Res {
+                res: Res::Def(DefKind::TypeParam, did),
+                ..
+            } => {
+                let tp = self
+                    .hir
+                    .resolve
+                    .type_params
+                    .get(did)
                     .expect("unknown type param");
                 Ty::Param(*did, tp.index)
             }
@@ -226,7 +254,8 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
-    fn resolve_builtin_types_by_name(&self, name: &str) -> Ty {
+    /// Resolves buitin type by name
+    fn resolve_builtin_type_by_name(&self, name: &str) -> Ty {
         match name {
             "i8" => Ty::Int(IntTy::I8),
             "i16" => Ty::Int(IntTy::I16),
@@ -265,7 +294,7 @@ impl<'hir> TypeChecker<'hir> {
         &mut self,
         def_id: DefId,
         f: &HirFnDef,
-    ) -> TypeckBodies {
+    ) -> TypeckBody {
         // Clearing last check data
         self.locals.clear();
         self.expr_tys.clear();
@@ -303,7 +332,7 @@ impl<'hir> TypeChecker<'hir> {
         &mut self,
         def_id: DefId,
         c: &HirConstDef,
-    ) -> TypeckBodies {
+    ) -> TypeckBody {
         // Clearing last check data
         self.locals.clear();
         self.expr_tys.clear();
@@ -327,7 +356,7 @@ impl<'hir> TypeChecker<'hir> {
     }
 
     /// Finalizes the results by types fallback
-    fn finalize_results(&mut self) -> TypeckBodies {
+    fn finalize_results(&mut self) -> TypeckBody {
         for ty in self.expr_tys.values_mut() {
             *ty = self.icx.fallback(ty.clone());
         }
@@ -343,7 +372,7 @@ impl<'hir> TypeChecker<'hir> {
             }
         }
 
-        TypeckBodies {
+        TypeckBody {
             expr_tys: std::mem::take(&mut self.expr_tys),
             local_tys: std::mem::take(&mut self.locals),
             pat_tys: std::mem::take(&mut self.pat_tys),
@@ -351,13 +380,13 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
-    /// Returns empty results
-    fn empty_results(&self) -> TypeckBodies {
-        TypeckBodies {
+    /// Returns empty results for body
+    fn empty_results(&self) -> TypeckBody {
+        TypeckBody {
             expr_tys: HashMap::new(),
             local_tys: HashMap::new(),
             pat_tys: HashMap::new(),
-            expr_substs: HashMap::new()
+            expr_substs: HashMap::new(),
         }
     }
 
@@ -386,56 +415,85 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
-    fn check_record_ctor(&mut self, body: &HirBody, span: Span, res: &Res, fields: &Vec<(String, ExprId)>) -> Ty {
+    /// Checks record constructor
+    fn check_record_ctor(
+        &mut self,
+        body: &HirBody,
+        span: Span,
+        res: &Res,
+        fields: &Vec<(String, ExprId)>,
+    ) -> Ty {
         match res {
             Res::Def(DefKind::Struct, did) => {
-                let struct_def = self.hir.items.vec().iter()
+                // Retrieving struct def
+                let struct_def = self
+                    .hir
+                    .items
+                    .vec()
+                    .iter()
                     .find(|item| item.def_id == *did)
                     .and_then(|item| match &item.kind {
                         HirItemKind::Struct(s) => Some(s),
                         _ => None,
-                     });
+                    });
 
+                // Checking if its found
                 match struct_def {
                     Some(s) => {
+                        // Checking for fields existence
                         for (name, init_id) in fields {
                             let init_ty = self.check_expr(body, *init_id);
-                            match s.fields.iter().find(|f| f.name == *name) {
+                            match s.fields.iter().find(|f| f.name == *name)
+                            {
                                 Some(field) => {
-                                    let field_ty = self.lower_hir_ty(&field.ty);
-                                    self.eq(field_ty, init_ty, span.clone());
+                                    let field_ty =
+                                        self.lower_hir_ty(&field.ty);
+                                    self.eq(
+                                        field_ty,
+                                        init_ty,
+                                        span.clone(),
+                                    );
                                 }
                                 None => {
-                                    self.errors.push(TyCheckError::NoSuchField {
-                                        ty: format!("adt#{}", did.0),
-                                        field: name.clone(),
-                                        src: span.0.clone(),
-                                        span: span.1.clone().into(),
-                                    });
+                                    self.errors.push(
+                                        TyCheckError::NoSuchField {
+                                            ty: s.name.clone(),
+                                            field: name.clone(),
+                                            src: span.0.clone(),
+                                            span: span.1.clone().into(),
+                                        },
+                                    );
                                 }
                             }
                         }
 
-                        let provided: HashSet<&str> = fields.iter()
+                        // Checking for missing fields
+                        let provided: HashSet<&str> = fields
+                            .iter()
                             .map(|(name, _)| name.as_str())
                             .collect();
                         for field in &s.fields {
                             if !provided.contains(field.name.as_str()) {
-                                self.errors.push(TyCheckError::MissingField {
-                                    ty: s.name.clone(),
-                                    field: field.name.clone(),
-                                    src: span.0.clone(),
-                                    span: span.1.clone().into(),
-                                });
+                                self.errors.push(
+                                    TyCheckError::MissingField {
+                                        ty: s.name.clone(),
+                                        field: field.name.clone(),
+                                        src: span.0.clone(),
+                                        span: span.1.clone().into(),
+                                    },
+                                );
                             }
                         }
 
+                        // Matching provided and fields len
                         if provided.len() != fields.len() {
-                            self.errors.push(TyCheckError::DuplicateField {
-                                ty: s.name.clone(),
-                                src: span.0.clone(),
-                                span: span.1.clone().into(),
-                            });
+                            self.errors.push(
+                                TyCheckError::DuplicateField {
+                                    ty: s.name.clone(),
+                                    src: span.0.clone(),
+                                    span: span.1.clone().into(),
+                                },
+                            );
                         }
                         Ty::Adt(*did, vec![])
                     }
@@ -454,7 +512,9 @@ impl<'hir> TypeChecker<'hir> {
 
         // Inferring expression type
         let ty = match &expr.kind {
-            HirExprKind::RecCtor { res, fields } => self.check_record_ctor(body, span, res, fields),
+            HirExprKind::Rec { res, fields } => {
+                self.check_record_ctor(body, span, res, fields)
+            }
             HirExprKind::Lit(lit) => self.infer_lit(lit),
             HirExprKind::Var(res) => self.infer_var(res, expr_id),
             HirExprKind::Unary(inner_id, op) => {
@@ -656,7 +716,8 @@ impl<'hir> TypeChecker<'hir> {
                         if sig.type_params.is_empty() {
                             Ty::Fn(sig.params, Box::new(sig.ret))
                         } else {
-                            let (params, ret, substs) = self.instantiate_sig(&sig);
+                            let (params, ret, substs) =
+                                self.instantiate_sig(&sig);
                             self.expr_substs.insert(expr_id, substs);
                             Ty::Fn(params, Box::new(ret))
                         }
@@ -923,9 +984,7 @@ impl<'hir> TypeChecker<'hir> {
 }
 
 /// Performs module typecheck
-pub fn typeck_module(
-    hir: &Hir,
-) -> (TypeckOutput, Vec<TyCheckError>) {
+pub fn typeck_module(hir: &Hir) -> (TypeckOutput, Vec<TyCheckError>) {
     let mut checker = TypeChecker::new(hir);
     let result = checker.check_module();
     (result, checker.errors)
