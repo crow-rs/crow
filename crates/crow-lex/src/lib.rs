@@ -44,18 +44,16 @@ impl<'s> Lexer<'s> {
 
     /// Advances char
     fn advance(&mut self) {
-        let old_current = self.current;
         self.current = self.next.take();
         self.next = self.src.next();
-        self.idx += old_current.map(|c| c.len_utf8()).unwrap_or(1);
+        self.idx += 1;
     }
 
     /// Advances char and returns token
     fn advance_with(&mut self, tk: TokenKind, lexeme: &str) -> Token {
-        let start = self.idx;
         self.advance();
         Token::new(
-            Span(self.source.clone(), start..self.idx),
+            Span(self.source.clone(), self.idx - 1..self.idx),
             tk,
             lexeme.to_string(),
         )
@@ -67,11 +65,10 @@ impl<'s> Lexer<'s> {
         tk: TokenKind,
         lexeme: &str,
     ) -> Token {
-        let start = self.idx;
         self.advance();
         self.advance();
         Token::new(
-            Span(self.source.clone(), start..self.idx),
+            Span(self.source.clone(), self.idx - 2..self.idx),
             tk,
             lexeme.to_string(),
         )
@@ -381,7 +378,6 @@ impl<'s> Lexer<'s> {
     /// Token kind for id
     fn token_kind_for_id(value: &str) -> TokenKind {
         match value {
-            "_" => TokenKind::Wildcard,
             "use" => TokenKind::Use,
             "struct" => TokenKind::Struct,
             "enum" => TokenKind::Enum,
@@ -431,7 +427,7 @@ impl<'s> Lexer<'s> {
     fn skip_comment(&mut self) {
         // #
         self.advance();
-        while self.current != Some('\n') && !self.is_eof() {
+        while self.current != Some('\n') {
             self.advance();
         }
     }
@@ -441,16 +437,12 @@ impl<'s> Lexer<'s> {
         // #[
         self.advance();
         self.advance();
-        while !(self.current == Some(']') && self.next == Some('#'))
-            && !self.is_eof()
-        {
+        while !(self.current == Some(']') && self.next == Some('#')) {
             self.advance();
         }
         // ]#
-        if !self.is_eof() {
-            self.advance();
-            self.advance();
-        }
+        self.advance();
+        self.advance();
     }
 
     /// Skips whitespaces and comments
@@ -477,7 +469,7 @@ impl<'s> Lexer<'s> {
     }
 
     /// Is current is a whitespace?
-    fn is_whitespace(&self) -> bool {
+    fn is_whitespace(&mut self) -> bool {
         matches!(
             self.current,
             Some(' ') | Some('\n') | Some('\t') | Some('\r')
@@ -485,22 +477,22 @@ impl<'s> Lexer<'s> {
     }
 
     /// Is current in some id letter?
-    fn is_id_letter(&self) -> bool {
+    fn is_id_letter(&mut self) -> bool {
         matches!(self.current, Some(it) if it.is_ascii_alphabetic() || it == '_')
     }
 
     /// Is current is some ascii digit?
-    fn is_ascii_digit(&self) -> bool {
+    fn is_ascii_digit(&mut self) -> bool {
         matches!(self.current, Some(it) if it.is_ascii_digit())
     }
 
     /// Is current is some digit with specified radix?
-    fn is_digit(&self, radix: u32) -> bool {
+    fn is_digit(&mut self, radix: u32) -> bool {
         matches!(self.current, Some(it) if it.is_digit(radix))
     }
 
     /// Is end of file
-    fn is_eof(&self) -> bool {
+    fn is_eof(&mut self) -> bool {
         self.current.is_none()
     }
 }
@@ -560,6 +552,9 @@ impl<'s> Iterator for Lexer<'s> {
             (Some('-'), Some('>')) => {
                 Some(self.advance_twice_with(TokenKind::Arrow, "->"))
             }
+            (Some('_'), _) => {
+                Some(self.advance_with(TokenKind::Wildcard, "_"))
+            }
             (Some('&'), _) => {
                 Some(self.advance_with(TokenKind::Ampersand, "&"))
             }
@@ -568,7 +563,7 @@ impl<'s> Iterator for Lexer<'s> {
                 Some(self.advance_with(TokenKind::Caret, "^"))
             }
             (Some('%'), _) => {
-                Some(self.advance_with(TokenKind::Percent, "%"))
+                Some(self.advance_with(TokenKind::Percent, "^"))
             }
             (Some('+'), _) => {
                 Some(self.advance_with(TokenKind::Plus, "+"))
@@ -628,7 +623,7 @@ impl<'s> Iterator for Lexer<'s> {
                     bail!(LexError::UnexpectedChar {
                         ch,
                         src: self.source.clone(),
-                        span: (self.idx..self.idx + ch.len_utf8()).into(),
+                        span: (self.idx..self.idx).into(),
                     })
                 }
             }
