@@ -1,8 +1,8 @@
 /// Imports
 use crate::id::*;
 use crow_ast::atom::Lit;
-use crow_common::span::Span;
-use crow_resolving::table::{LocalId, Res};
+use crow_common::{LocalId, span::Span};
+use crow_resolving::table::{Res};
 
 /// Defines hir pattern
 #[derive(Debug, Clone)]

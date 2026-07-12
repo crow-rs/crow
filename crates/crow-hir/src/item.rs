@@ -4,9 +4,8 @@ use crate::{
     id::*,
     ty::{HirEffects, HirTy},
 };
-use crow_ast::atom::Publicity;
-use crow_common::span::Span;
-use crow_resolving::table::DefId;
+use crow_ast::{atom::Publicity, item::Attribute};
+use crow_common::{DefId, span::Span};
 
 /// Defines hir item
 #[derive(Debug, Clone)]
@@ -14,8 +13,19 @@ pub struct HirItem {
     pub id: ItemId,
     pub def_id: DefId,
     pub publicity: Publicity,
+    pub attributes: Vec<Attribute>,
     pub span: Span,
     pub kind: HirItemKind,
+}
+
+impl HirItem {
+    pub fn has_attr(&self, name: &str) -> bool {
+        self.attributes.iter().any(|a| a.name == name)
+    }
+
+    pub fn get_attr(&self, name: &str) -> Option<&Attribute> {
+        self.attributes.iter().find(|a| a.name == name)
+    }
 }
 
 /// Defines hir item
@@ -77,7 +87,7 @@ pub struct HirFnDef {
     pub effects: HirEffects,
     pub type_params: Vec<HirGenericParam>,
     pub ret: HirTy,
-    pub body: BodyId,
+    pub body: Option<BodyId>,
 }
 
 /// Defines hir native function def

@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-crow-tycheck ={ path = "../crow-tycheck"}
-crow-resolving ={ path = "../crow-resolving"}
+crow-common ={ path = "../crow-common"}
 crow-ast ={ path = "../crow-ast"}
+crow-types ={ path = "../crow-types"}

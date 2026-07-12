@@ -87,7 +87,7 @@ pub struct Fun {
     pub params: Vec<Param>,
     pub effects: Effects,
     pub ret: TypeHint,
-    pub block: Expr,
+    pub block: Option<Expr>,
 }
 
 /// Native function item
@@ -122,9 +122,18 @@ pub enum ItemKind {
 
 /// Defines item
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Attribute {
+    pub span: Span,
+    pub name: String,
+    pub args: Vec<String>
+}
+
+/// Defines item
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Item {
     pub publicity: Publicity,
     pub span: Span,
+    pub attributes: Vec<Attribute>,
     pub kind: ItemKind,
 }
 

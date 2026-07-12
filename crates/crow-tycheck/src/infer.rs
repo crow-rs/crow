@@ -1,8 +1,10 @@
 /// Imports
-use crate::{errors::TyCheckError, ty::*};
 use crow_common::span::Span;
+use crow_types::{FloatTy, FloatVid, IntTy, IntVid, Ty, TyValue, TyVid};
 use ena::unify::{InPlace, InPlaceUnificationTable};
 use std::collections::HashMap;
+
+use crate::errors::TyCheckError;
 
 /// Inference context that used across
 /// the type-checking process
@@ -144,6 +146,7 @@ impl InferCtxt {
         match (a, b) {
             (Ty::Error, _) | (_, Ty::Error) => Ok(()),
             (Ty::Never, _) | (_, Ty::Never) => Ok(()),
+            
             (Ty::Infer(a), Ty::Infer(b)) if a == b => Ok(()),
             (Ty::Infer(a), Ty::Infer(b)) => self
                 .table
@@ -211,6 +214,7 @@ impl InferCtxt {
                     src: span.0.clone(),
                     span: span.1.clone().into(),
                 }),
+            (Ty::RawPtr, _) | (_, Ty::RawPtr) => Ok(()),
             (Ty::Int(a), Ty::Int(b)) if a == b => Ok(()),
             (Ty::Float(a), Ty::Float(b)) if a == b => Ok(()),
             (Ty::Bool, Ty::Bool) => Ok(()),

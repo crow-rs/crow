@@ -1,21 +1,73 @@
-native fun print_i8(a: i8) = "crow_print_i8"
-native fun print_i32(a: i32) = "crow_print_i32"
-native fun print_str(a: string) = "crow_print_str"
-native fun println() = "crow_println"
-native fun read_line() -> string = "crow_read_line"
-native fun read_i32() -> i32 = "crow_read_i32"
-native fun read_i64() -> i64 = "crow_read_i64"
-native fun read_f64() -> f64 = "crow_read_f64"
+@intrinsic("ptr_read")
+fun ptr_read_i32(ptr: raw_ptr, offset: i64) -> i32
+
+@intrinsic("ptr_read")
+fun ptr_read_ptr(ptr: raw_ptr, offset: i64) -> raw_ptr
+
+@intrinsic("ptr_write")
+fun ptr_write_i32(ptr: raw_ptr, offset: i64, value: i32)
+
+@intrinsic("ptr_write")
+fun ptr_write_ptr(ptr: raw_ptr, offset: i64, value: raw_ptr)
+
+@intrinsic("ptr_offset")
+fun ptr_offset(ptr: raw_ptr, offset: i64) -> raw_ptr
+
+@intrinsic("str_len")
+fun str_len(s: str) -> i64
+
+@intrinsic("str_ptr")
+fun str_ptr(s: str) -> raw_ptr
+
+@intrinsic("trap")
+fun trap() -> !
+
+native fun exit(code: i64) -> ! = "exit"
+native fun malloc(size: i64) -> raw_ptr = "malloc"
+native fun free(ptr: raw_ptr) = "free"
+native fun print_i32(n: i32) = "crow_print_i32"
+native fun write(fd: i64, ptr: raw_ptr, size: i64) -> i64 = "write"
+
+
+@lang_def("panic")
+fun panic(msg: str) -> ! {
+    val len = str_len(msg)
+    _ = write(1, str_ptr(msg), len)
+    exit(-1)
+}
+
+@lang_def("rc_retain")
+fun rc_retain(ptr: raw_ptr) {
+    val header = ptr_offset(ptr, -4)
+    val count = ptr_read_i32(header, 0)
+    ptr_write_i32(header, 0, count + 1)
+}
+
+@lang_def("rc_release")
+fun rc_release(ptr: raw_ptr) {
+    val header = ptr_offset(ptr, -4)
+    val count = ptr_read_i32(header, 0)
+    if count == 1 {
+        free(header)
+    } else {
+        ptr_write_i32(header, 0, count - 1)
+    }
+}
+
+@lang_def("rc_alloc")
+fun rc_alloc(size: i64) -> raw_ptr {
+    val block = malloc(size + 4)
+    ptr_write_i32(block, 0, 1)
+    val ptr = ptr_offset(block, 4)
+    ptr
+}
 
 fun main() -> i8 {
-    print_str("Enter your name: ")
-    val name = read_line()
-    print_str("Hello, ")
-    print_str(name)
-    print_str("!\n")
-    print_str("Enter a number: ")
-    val n = read_i32()
-    print_i32(n * 2)
-    println()
+    val a: str = "Hello "
+    val b: str = "World!\n"
+
+    val new_str = a ++ b
+    val len = str_len(new_str)
+    _ = write(1, str_ptr(new_str), len)
     0
 }

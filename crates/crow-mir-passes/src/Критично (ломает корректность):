@@ -1,0 +1,4 @@
+Оптимизации (потом):
+  [5] Perceus — skip retain/release при rc==1
+  [6] Move semantics — transfer ownership вместо retain+release
+  [7] Atomic refcount — для многопоточности

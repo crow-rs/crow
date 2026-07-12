@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet};
 use crow_ast::atom::{
     BinOp as AstBinOp, Lit, Mutability, UnOp as AstUnOp,
 };
+use crow_collect_spec_item::SpecialItems;
+use crow_common::{DefId, LocalId};
 use crow_hir::{
     Hir,
     body::HirBody,
@@ -14,17 +16,14 @@ use crow_hir::{
     ty::{HirTy, HirTyKind},
 };
 use crow_mir::{
-    AdtDef, AggregateKind, BasicBlock, BinOp, Block, ConstId, Constant,
-    FnId, Local, LocalDecl, MirBody, MirConstDef, MirModule, MirNative,
-    MirTyCtxt, NativeId, Operand, Place, Projection, RETURN_PLACE, Rvalue,
-    Statement, Terminator, UnOp,
+    AdtDef, AggregateKind, BasicBlock, BinOp, Block, CastKind, ConstId, Constant, FnId, GcDefs, LangDefs, Local, LocalDecl, MirBody, MirConstDef, MirModule, MirNative, MirTyCtxt, NativeId, Operand, Place, Projection, RETURN_PLACE, Rvalue, Statement, Terminator, UnOp,
 };
-use crow_resolving::table::{DefId, LocalId, Res};
+use crow_resolving::table::Res;
 use crow_tycheck::typeck::TypeckOutput;
 use crow_tycheck::{
-    ty::{FloatTy, IntTy, Ty},
     typeck::TypeckBody,
 };
+use crow_types::{FloatTy, IntTy, Ty};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DefKind {
@@ -40,9 +39,17 @@ struct VariantInfo {
     index: u32,
 }
 
+pub struct IntrinsicInfo {
+    pub name: String,
+    pub ret_ty: Ty,
+    pub arg_count: usize,
+}
+
 pub struct LoweringCtxt<'hir> {
     hir: &'hir Hir,
     typeck: &'hir TypeckOutput,
+
+    lang_items: &'hir SpecialItems,
 
     fn_map: HashMap<DefId, FnId>,
     native_map: HashMap<DefId, NativeId>,
@@ -56,13 +63,22 @@ pub struct LoweringCtxt<'hir> {
     mir_functions: Vec<MirBody>,
     mir_natives: Vec<MirNative>,
     mir_constants: Vec<MirConstDef>,
+
+    mir_intrin_fns: HashMap<FnId, IntrinsicInfo>,
+    drop_glue: HashMap<DefId, FnId>,
+
+    lang_rc_alloc: Option<FnId>,
+    lang_rc_retain: Option<FnId>,
+    lang_rc_release: Option<FnId>,
+    lang_panic: Option<FnId>,
 }
 
 impl<'hir> LoweringCtxt<'hir> {
-    fn new(hir: &'hir Hir, typeck: &'hir TypeckOutput) -> Self {
+    fn new(hir: &'hir Hir, typeck: &'hir TypeckOutput, spec_items: &'hir SpecialItems) -> Self {
         let mut lcx = LoweringCtxt {
             hir,
             typeck,
+            lang_items: spec_items,
             fn_map: HashMap::new(),
             native_map: HashMap::new(),
             const_map: HashMap::new(),
@@ -75,6 +91,12 @@ impl<'hir> LoweringCtxt<'hir> {
             mir_functions: Vec::new(),
             mir_natives: Vec::new(),
             mir_constants: Vec::new(),
+            mir_intrin_fns: HashMap::new(),
+            lang_rc_alloc: None,
+            lang_rc_retain: None,
+            lang_rc_release: None,
+            lang_panic: None,
+            drop_glue: HashMap::new()
         };
         lcx.scan_items();
         lcx
@@ -104,6 +126,211 @@ impl<'hir> LoweringCtxt<'hir> {
         }
     }
 
+    fn find_native(&self, name: &str) -> Option<NativeId> {
+        self.mir_natives.iter()
+            .enumerate()
+            .find(|(_, n)| n.symbol == name)
+            .map(|(i, _)| NativeId::from(i))
+    }
+
+    fn find_intrinsic_by_ret(&self, intrinsic_name: &str, ret_ty: &Ty) -> Option<FnId> {
+        self.mir_intrin_fns.iter()
+            .find(|(_, info)| info.name == intrinsic_name && info.ret_ty == *ret_ty)
+            .map(|(id, _)| *id)
+    }
+
+    fn find_intrinsic_void(&self, intrinsic_name: &str) -> Option<FnId> {
+        self.mir_intrin_fns.iter()
+            .find(|(_, info)| info.name == intrinsic_name && info.ret_ty == Ty::Unit)
+            .map(|(id, _)| *id)
+    }
+
+    //todo - proper recalc ptr size from target config
+    fn type_size(&self, ty: &Ty) -> u32 {
+        match ty {
+            Ty::Bool => 1,
+            Ty::Int(IntTy::I8 | IntTy::U8) => 1,
+            Ty::Int(IntTy::I16 | IntTy::U16) => 2,
+            Ty::Int(IntTy::I32 | IntTy::U32) => 4,
+            Ty::Int(IntTy::I64 | IntTy::U64) => 8,
+            Ty::Float(FloatTy::F32) => 4,
+            Ty::Float(FloatTy::F64) => 8,
+            Ty::String => 16,
+            Ty::RawPtr => 8,
+            Ty::Adt(_, _) => 8, // pointer на куче
+            _ => 8,
+        }
+    }
+
+    fn generate_drop_glue(&mut self, def_id: DefId, adt: &AdtDef) -> FnId {
+        let fn_id = FnId::from(self.mir_functions.len());
+
+        let release_fn = self.lang_rc_release
+            .expect("drop glue needs @lang_def(\"rc_release\")");
+
+        let fields = &adt.variants[0].fields;
+
+        let mut rc_fields: Vec<(u32, DefId)> = Vec::new();
+        let mut offset: u32 = 0;
+        for field_ty in fields {
+            if let Ty::Adt(field_def_id, _) = field_ty {
+                rc_fields.push((offset, *field_def_id));
+            }
+            offset += self.type_size(field_ty);
+        }
+
+        let mut locals = Vec::new();
+        locals.push(LocalDecl { ty: Ty::Unit, name: None, mutability: Mutability::Immut });       
+        locals.push(LocalDecl { ty: Ty::RawPtr, name: Some("ptr".into()), mutability: Mutability::Immut }); 
+        locals.push(LocalDecl { ty: Ty::RawPtr, name: Some("header".into()), mutability: Mutability::Immut }); 
+        locals.push(LocalDecl { ty: Ty::Int(IntTy::I32), name: Some("count".into()), mutability: Mutability::Immut }); 
+        locals.push(LocalDecl { ty: Ty::Bool, name: None, mutability: Mutability::Immut });
+        locals.push(LocalDecl { ty: Ty::Unit, name: None, mutability: Mutability::Immut });
+
+        let arg_ptr = Local(1);
+        let header = Local(2);
+        let count = Local(3);
+        let cmp = Local(4);
+        let void_tmp = Local(5);
+
+        let mut field_locals: Vec<Local> = Vec::new();
+        for _ in &rc_fields {
+            let local = Local::from(locals.len());
+            locals.push(LocalDecl { ty: Ty::RawPtr, name: None, mutability: Mutability::Immut });
+            field_locals.push(local);
+        }
+
+        let ptr_offset_fn = self.find_intrinsic_by_ret("ptr_offset", &Ty::RawPtr).unwrap();
+        let ptr_read_i32_fn = self.find_intrinsic_by_ret("ptr_read", &Ty::Int(IntTy::I32)).unwrap();
+        let ptr_read_ptr_fn = self.find_intrinsic_by_ret("ptr_read", &Ty::RawPtr).unwrap();
+
+        let mut blocks: Vec<BasicBlock> = Vec::new();
+
+        let bb_read_count = Block(1);
+        let bb_switch = Block(2);
+        let bb_release_self = if rc_fields.is_empty() {
+            Block(3)
+        } else {
+            Block(3 + rc_fields.len() as u32 * 2)
+        };
+        let bb_ret = Block(bb_release_self.0 + 1);
+
+        blocks.push(BasicBlock {
+            stmts: vec![],
+            term: Terminator::Call {
+                func: Operand::Const(Constant::Fn(ptr_offset_fn, vec![])),
+                args: vec![
+                    Operand::Copy(Place::local(arg_ptr)),
+                    Operand::Const(Constant::Int(-4, IntTy::I64)),
+                ],
+                dest: Place::local(header),
+                target: bb_read_count,
+            },
+        });
+
+        blocks.push(BasicBlock {
+            stmts: vec![],
+            term: Terminator::Call {
+                func: Operand::Const(Constant::Fn(ptr_read_i32_fn, vec![])),
+                args: vec![
+                    Operand::Copy(Place::local(header)),
+                    Operand::Const(Constant::Int(0, IntTy::I64)),
+                ],
+                dest: Place::local(count),
+                target: bb_switch,
+            },
+        });
+
+        let first_child = if rc_fields.is_empty() { bb_release_self } else { Block(3) };
+        blocks.push(BasicBlock {
+            stmts: vec![
+                Statement::Assign(
+                    Place::local(cmp),
+                    Rvalue::BinaryOp(
+                        BinOp::Eq,
+                        Operand::Copy(Place::local(count)),
+                        Operand::Const(Constant::Int(1, IntTy::I32)),
+                    ),
+                ),
+            ],
+            term: Terminator::SwitchInt {
+                discr: Operand::Copy(Place::local(cmp)),
+                targets: vec![(1, first_child)],
+                otherwise: bb_release_self,
+            },
+        });
+
+        for (i, (field_offset, _field_def_id)) in rc_fields.iter().enumerate() {
+            let field_local = field_locals[i];
+            let next = if i + 1 < rc_fields.len() {
+                Block(3 + (i as u32 + 1) * 2)
+            } else {
+                bb_release_self
+            };
+
+            blocks.push(BasicBlock {
+                stmts: vec![],
+                term: Terminator::Call {
+                    func: Operand::Const(Constant::Fn(ptr_read_ptr_fn, vec![])),
+                    args: vec![
+                        Operand::Copy(Place::local(arg_ptr)),
+                        Operand::Const(Constant::Int(*field_offset as i128, IntTy::I64)),
+                    ],
+                    dest: Place::local(field_local),
+                    target: Block(3 + i as u32 * 2 + 1),
+                },
+            });
+
+            blocks.push(BasicBlock {
+                stmts: vec![],
+                term: Terminator::Call {
+                    func: Operand::Const(Constant::Fn(release_fn, vec![])),
+                    args: vec![Operand::Copy(Place::local(field_local))],
+                    dest: Place::local(void_tmp),
+                    target: next,
+                },
+            });
+        }
+
+        blocks.push(BasicBlock {
+            stmts: vec![],
+            term: Terminator::Call {
+                func: Operand::Const(Constant::Fn(release_fn, vec![])),
+                args: vec![Operand::Copy(Place::local(arg_ptr))],
+                dest: Place::local(void_tmp),
+                target: bb_ret,
+            },
+        });
+
+        blocks.push(BasicBlock {
+            stmts: vec![],
+            term: Terminator::Return,
+        });
+
+        self.mir_functions.push(MirBody {
+            name: format!("__drop_{}", adt.name),
+            arg_count: 1,
+            type_params: vec![],
+            locals,
+            blocks,
+        });
+
+        self.drop_glue.insert(def_id, fn_id);
+        fn_id
+    }
+
+    fn handle_specialized_items(&mut self, def_id: DefId, fn_id: FnId) {
+        let lang = &self.lang_items.lang;
+
+        // GC
+        if Some(def_id) == lang.rc_alloc { self.lang_rc_alloc = Some(fn_id); }
+        if Some(def_id) == lang.rc_retain { self.lang_rc_retain = Some(fn_id); }
+        if Some(def_id) == lang.rc_release { self.lang_rc_release = Some(fn_id); }
+
+        // Panic
+        if Some(def_id) == lang.panic { self.lang_panic = Some(fn_id); }
+    }
+
     fn scan_items(&mut self) {
         for item in self.hir.items.vec() {
             let did = item.def_id;
@@ -112,14 +339,22 @@ impl<'hir> LoweringCtxt<'hir> {
                     let fn_id = FnId::from(self.mir_functions.len());
                     self.fn_map.insert(did, fn_id);
                     self.def_kinds.insert(did, DefKind::Fn);
+
+                    if let Some(name) = self.lang_items.intrinsics.get(did) {
+                        let ret = self.hir_ty_to_ty(&f.ret);
+                        self.mir_intrin_fns.insert(fn_id, IntrinsicInfo {
+                            name: name.to_string(),
+                            ret_ty: ret,
+                            arg_count: f.params.len(),
+                        });
+                    }
+
+                    self.handle_specialized_items(did, fn_id);
+
                     self.mir_functions.push(MirBody {
                         name: f.name.clone(),
                         arg_count: f.params.len(),
-                        type_params: f
-                            .type_params
-                            .iter()
-                            .map(|tp| tp.def_id)
-                            .collect(),
+                        type_params: f.type_params.iter().map(|tp| tp.def_id).collect(),
                         locals: Vec::new(),
                         blocks: Vec::new(),
                     });
@@ -159,6 +394,13 @@ impl<'hir> LoweringCtxt<'hir> {
                     self.scan_enum(did, e);
                 }
             }
+        }
+
+        let adts: Vec<(DefId, AdtDef)> = self.mir_tcx.adts.iter()
+            .map(|(did, adt)| (*did, adt.clone()))
+            .collect();
+        for (def_id, adt) in adts {
+            self.generate_drop_glue(def_id, &adt);
         }
     }
 
@@ -220,10 +462,11 @@ impl<'hir> LoweringCtxt<'hir> {
             .iter()
             .filter_map(|item| {
                 if let HirItemKind::Fun(f) = &item.kind {
+                    let body_id = f.body?;
                     let fn_id = self.fn_map[&item.def_id];
                     Some((
                         fn_id.index(),
-                        f.body,
+                        body_id,
                         f.params.clone(),
                         f.type_params.clone(),
                     ))
@@ -318,7 +561,7 @@ impl<'hir> LoweringCtxt<'hir> {
     fn fn_name_for_body(&self, body: &HirBody) -> String {
         for item in self.hir.items.vec() {
             if let HirItemKind::Fun(f) = &item.kind {
-                if f.body == body.id {
+                if f.body == Some(body.id) {
                     return f.name.clone();
                 }
             }
@@ -541,6 +784,21 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
     fn lower_expr(&mut self, expr_id: ExprId, dest: Place) {
         let kind = self.hir_body.expr(expr_id).kind.clone();
         match kind {
+            HirExprKind::Cast { expr, .. } => {
+                let inner_op = self.as_operand(expr);
+                let from_ty = self.expr_ty(expr);
+                let to_ty = self.expr_ty(expr_id);
+                let kind = match (&from_ty, &to_ty) {
+                    (Ty::Int(_), Ty::Int(_))     => CastKind::IntToInt,
+                    (Ty::Int(_), Ty::Float(_))   => CastKind::IntToFloat,
+                    (Ty::Float(_), Ty::Int(_))   => CastKind::FloatToInt,
+                    (Ty::Float(_), Ty::Float(_)) => CastKind::FloatToFloat,
+                    (Ty::Bool, Ty::Int(_))       => CastKind::IntToInt,
+                    (Ty::Int(_), Ty::Bool)       => CastKind::IntToInt,
+                    _ => panic!("invalid cast should be caught by typeck"),
+                };
+                self.push_assign(dest, Rvalue::Cast(kind, inner_op, to_ty));
+            }
             HirExprKind::Rec {
                 ref res,
                 ref fields,
@@ -683,6 +941,22 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
         self.current = bb_join;
     }
 
+    fn lower_concat(&mut self, lhs: ExprId, rhs: ExprId, dest: Place) {
+        let lhs_ty = self.expr_ty(lhs);
+        let rhs_ty = self.expr_ty(rhs);
+
+        if lhs_ty != Ty::String || rhs_ty != Ty::String {
+            panic!(
+                "runtime string concatenation not yet supported (requires Concat protocol). Got: {} ++ {}",
+                lhs_ty, rhs_ty
+            );
+        }
+
+        let lhs_op = self.as_operand(lhs);
+        let rhs_op = self.as_operand(rhs);
+        self.push_assign(dest, Rvalue::BinaryOp(BinOp::Add, lhs_op, rhs_op));
+    }
+
     fn lower_binop(
         &mut self,
         lhs: ExprId,
@@ -695,6 +969,10 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
         }
         if is_logical_or(op) {
             return self.lower_short_circuit(lhs, rhs, false, dest);
+        }
+
+        if matches!(op, AstBinOp::Concat) {
+            return self.lower_concat(lhs, rhs, dest);
         }
 
         let mir_op = lower_arith_binop(op);
@@ -777,7 +1055,6 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
         dest: Place,
     ) {
         let callee_kind = self.hir_body.expr(callee_id).kind.clone();
-
         if let HirExprKind::Var(Res::Def(_, did)) = &callee_kind {
             match self.lcx.def_kinds.get(did) {
                 Some(DefKind::Struct) => {
@@ -818,6 +1095,14 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
         let func = self.as_operand(callee_id);
         let arg_ops: Vec<Operand> =
             args.iter().map(|&a| self.as_operand(a)).collect();
+
+        let ret_ty = self.expr_ty(callee_id);
+        let is_never = if let Ty::Fn(_, ret) = &ret_ty {
+            **ret == Ty::Never
+        } else {
+            false
+        };
+
         let bb_ret = self.new_block();
         self.terminate(Terminator::Call {
             func,
@@ -826,6 +1111,12 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
             target: bb_ret,
         });
         self.current = bb_ret;
+
+        if is_never {
+            self.terminate(Terminator::Unreachable);
+            let dead = self.new_block();
+            self.current = dead;
+        }
     }
 
     fn lower_block(&mut self, stmt_ids: &[StmtId], dest: Place) {
@@ -894,15 +1185,12 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
             self.lower_expr(a, Place::local(tmp));
         }
 
-        let panic_native =
-            self.lcx.mir_natives.iter().position(|n| n.name == "panic");
-
-        if let Some(idx) = panic_native {
-            let nid = NativeId::from(idx);
+        if let Some(panic_def) = self.lcx.lang_items.lang.panic {
+            let fn_id = self.lcx.fn_map[&panic_def];
             let bb_unreach = self.new_block();
             let never_tmp = self.new_temp(Ty::Never);
             self.terminate(Terminator::Call {
-                func: Operand::Const(Constant::Native(nid)),
+                func: Operand::Const(Constant::Fn(fn_id, vec![])),
                 args: vec![],
                 dest: Place::local(never_tmp),
                 target: bb_unreach,
@@ -1239,6 +1527,9 @@ fn walk_free(
 ) {
     let kind = body.expr(eid).kind.clone();
     match kind {
+        HirExprKind::Cast { expr, .. } => {
+            walk_free(body, expr, bound, free, seen);
+        }
         HirExprKind::Rec { fields, .. } => {
             for (_, eid) in fields {
                 walk_free(body, eid, bound, free, seen);
@@ -1427,13 +1718,29 @@ fn zero_constant(ty: &Ty) -> Constant {
     }
 }
 
-pub fn lower_hir_to_mir(hir: &Hir, typeck: &TypeckOutput) -> MirModule {
-    let mut lcx = LoweringCtxt::new(hir, typeck);
+pub fn lower_hir_to_mir(hir: &Hir, typeck: &TypeckOutput, spec_items: &SpecialItems) -> MirModule {
+    let mut lcx = LoweringCtxt::new(hir, typeck, spec_items);
     lcx.lower_all_bodies();
+
     MirModule {
         tcx: lcx.mir_tcx,
         functions: lcx.mir_functions,
         natives: lcx.mir_natives,
         constants: lcx.mir_constants,
+        lang: LangDefs {
+            gc: match (lcx.lang_rc_alloc, lcx.lang_rc_retain, lcx.lang_rc_release) {
+                (Some(a), Some(ret), Some(rel)) => Some(GcDefs {
+                    rc_alloc: a,
+                    retain: ret,
+                    release: rel,
+                    drop_glue: lcx.drop_glue.clone(),
+                }),
+                _ => None,
+            },
+            panic: lcx.lang_panic,
+            intrinsics: lcx.mir_intrin_fns.iter()
+                .map(|(id, info)| (*id, info.name.clone()))
+                .collect(),
+        },
     }
 }

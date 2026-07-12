@@ -8,19 +8,20 @@ mod specialize;
 mod mangle;
 mod error;
 mod sys_linker;
+mod intrinsic_codegen;
 
 use std::{collections::HashMap, path::Path};
 
 use crow_mir_monomorph::{Instance, MonoItem};
+use crow_types::Ty;
 use inkwell::{
     OptimizationLevel, builder::Builder, context::Context, module::Module, targets::{FileType, InitializationConfig, Target, TargetTriple}, types::{BasicMetadataTypeEnum, BasicType, FunctionType}, values::FunctionValue,
 };
 
 use crow_mir::{
-    MirBody, MirModule, MirNative, MirTyCtxt
+    FnId, LangDefs, MirBody, MirModule, MirNative, MirTyCtxt
 };
 
-use crow_tycheck::ty::Ty;
 
 use crate::{comp_ops::TargetConfig, fn_gen::FnCodegen, link::{LinkConfig, LinkInput, link}, mangle::mangle_name, specialize::Specializer, type_builder::TypeCache};
 
@@ -30,18 +31,20 @@ pub struct Codegen<'llvm, 'mir> {
     pub builder: Builder<'llvm>,
     pub types: TypeCache<'llvm>,
     pub tcx: &'mir MirTyCtxt,
+    pub lang_defs: &'mir LangDefs,
     native_fns: Vec<FunctionValue<'llvm>>,
     instance_fns: HashMap<Instance, FunctionValue<'llvm>>,
 }
 
 impl<'llvm, 'mir> Codegen<'llvm, 'mir> {
-    pub fn new(context: &'llvm Context, tcx: &'mir MirTyCtxt, module_name: &str) -> Self {
+    pub fn new(context: &'llvm Context, tcx: &'mir MirTyCtxt, lang_defs: &'mir LangDefs, module_name: &str) -> Self {
         Self {
             module: context.create_module(module_name),
             builder: context.create_builder(),
             types: TypeCache::new(context),
             context,
             tcx,
+            lang_defs, 
             native_fns: Vec::new(),
             instance_fns: HashMap::new(),
         }
@@ -55,6 +58,9 @@ impl<'llvm, 'mir> Codegen<'llvm, 'mir> {
 
         for item in items {
             if let MonoItem::Fn(inst) = item {
+                if self.lang_defs.intrinsics.contains_key(&inst.fn_id) {
+                    continue;
+                }
                 let body = &mir.functions[inst.fn_id.index()];
                 let specialized = Specializer::specialize_body(body, &inst.substs);
                 let name = mangle_name(&body.name, &inst.substs);
@@ -65,6 +71,9 @@ impl<'llvm, 'mir> Codegen<'llvm, 'mir> {
 
         for item in items {
             if let MonoItem::Fn(inst) = item {
+                if self.lang_defs.intrinsics.contains_key(&inst.fn_id) {
+                    continue;
+                }
                 let body = &mir.functions[inst.fn_id.index()];
                 let specialized = Specializer::specialize_body(body, &inst.substs);
                 let fv = self.instance_fns[inst];
@@ -130,7 +139,7 @@ pub fn codegen_module<'llvm>(mir: &MirModule, items: &[MonoItem], module_name: &
     
     let context = Context::create();
 
-    let mut cg = Codegen::new(&context, &mir.tcx, module_name);
+    let mut cg = Codegen::new(&context, &mir.tcx, &mir.lang, module_name);
     cg.codegen_module(mir, items);
     
     cg.module.set_triple(&triple);
@@ -144,7 +153,7 @@ pub fn codegen_module<'llvm>(mir: &MirModule, items: &[MonoItem], module_name: &
     
     let path = Path::new("/home/f0rits/Documents/crow/test/output.o");
     
-    cg.module.print_to_stderr();
+    //cg.module.print_to_stderr();
 
     tm.write_to_file(&cg.module, FileType::Object, path).unwrap();
 

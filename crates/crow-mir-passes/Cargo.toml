@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 crow-mir ={ path = "../crow-mir"}
+crow-types ={ path = "../crow-types"}
+crow-resolving = { path = "../crow-resolving" }
+crow-collect-spec-item ={ path = "../crow-collect-spec-item"}

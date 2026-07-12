@@ -1,15 +1,7 @@
 /// Imports
 use crow_ast::atom::Mutability;
-use crow_common::span::Span;
+use crow_common::{DefId, LocalId, span::Span};
 use std::collections::HashMap;
-
-/// Definition id
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DefId(pub u32);
-
-/// Local variable id
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LocalId(pub u32);
 
 /// Definition kind
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

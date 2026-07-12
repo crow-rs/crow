@@ -2,12 +2,13 @@ use std::collections::HashMap;
 mod mir_fmt;
 
 use crow_ast::atom::Mutability;
-use crow_resolving::table::DefId;
-use crow_tycheck::ty::{FloatTy, IntTy, Ty};
+use crow_common::DefId;
+use crow_types::{FloatTy, IntTy, Ty};
+
 
 macro_rules! idx {
     ($($name:ident),*) => {$(
-        #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
         pub struct $name(pub u32);
         impl $name {
             #[inline] pub fn index(self) -> usize { self.0 as usize }
@@ -29,11 +30,13 @@ pub struct MirTyCtxt {
     pub adts: HashMap<DefId, AdtDef>,
 }
 
+#[derive(Clone, Debug)]
 pub struct AdtDef {
     pub name: String,
     pub variants: Vec<VariantDef>,
 }
 
+#[derive(Clone, Debug)]
 pub struct VariantDef {
     pub name: String,
     pub fields: Vec<Ty>,
@@ -49,11 +52,25 @@ impl MirTyCtxt {
     }
 }
 
+pub struct GcDefs {
+    pub rc_alloc: FnId,
+    pub retain: FnId,
+    pub release: FnId,
+    pub drop_glue: HashMap<DefId, FnId>,
+}
+
+pub struct LangDefs {
+    pub gc: Option<GcDefs>,
+    pub panic: Option<FnId>,
+    pub intrinsics: HashMap<FnId, String>,
+}
+
 pub struct MirModule {
     pub tcx: MirTyCtxt,
-    pub functions: Vec<MirBody>,     
-    pub natives: Vec<MirNative>,     
-    pub constants: Vec<MirConstDef>, 
+    pub functions: Vec<MirBody>,
+    pub natives: Vec<MirNative>,
+    pub constants: Vec<MirConstDef>,
+    pub lang: LangDefs,
 }
 
 pub struct MirNative {
@@ -101,6 +118,8 @@ pub enum Statement {
     Assign(Place, Rvalue),
     StorageLive(Local),
     StorageDead(Local),
+    Retain(Local), 
+    Release(Local),
     Nop,
 }
 

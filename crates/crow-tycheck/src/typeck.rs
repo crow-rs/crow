@@ -1,8 +1,8 @@
 /// Imports
 use crate::errors::TyCheckError;
 use crate::infer::InferCtxt;
-use crate::ty::*;
 use crow_ast::atom::{BinOp, Lit, UnOp};
+use crow_common::{DefId, LocalId};
 use crow_common::span::Span;
 use crow_hir::Hir;
 use crow_hir::body::HirBody;
@@ -12,7 +12,8 @@ use crow_hir::item::{HirConstDef, HirFnDef, HirItemKind};
 use crow_hir::pat::HirPatKind;
 use crow_hir::stmt::HirStmtKind;
 use crow_hir::ty::{HirTy, HirTyKind};
-use crow_resolving::table::{DefId, DefKind, LocalId, Res};
+use crow_resolving::table::{DefKind, Res};
+use crow_types::{IntTy, Ty};
 use std::collections::{HashMap, HashSet};
 
 /// Defines typeck result for single body
@@ -100,7 +101,7 @@ impl<'hir> TypeChecker<'hir> {
             if matches!(item_kind.1, DefKind::BuiltinType) {
                 let item_name =
                     self.hir.resolve.def_names.get(item_kind.0).unwrap();
-                let ty = self.resolve_builtin_type_by_name(item_name);
+                let ty = Ty::from_name(item_name);
                 self.primitive_tys.insert(item_kind.0.clone(), ty);
             }
         }
@@ -170,7 +171,10 @@ impl<'hir> TypeChecker<'hir> {
                         .iter()
                         .map(|p| self.lower_hir_ty(&p.ty))
                         .collect();
-                    let ret = self.lower_hir_ty(&f.ret);
+                    let mut ret = self.lower_hir_ty(&f.ret);
+                    if f.body.is_none() && matches!(ret, Ty::Infer(_)) {
+                        ret = Ty::Unit;
+                    }
                     self.fn_sigs.insert(
                         item.def_id,
                         FnSig {
@@ -214,8 +218,10 @@ impl<'hir> TypeChecker<'hir> {
         for item in self.hir.items.vec() {
             match &item.kind {
                 HirItemKind::Fun(f) => {
-                    let result = self.check_fn_body(item.def_id, f);
-                    results.push(result);
+                    if let Some(_) = f.body {
+                        let result = self.check_fn_body(item.def_id, f);
+                        results.push(result);
+                    }
                 }
                 HirItemKind::Const(c) => {
                     let result = self.check_const_body(item.def_id, c);
@@ -254,26 +260,6 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
-    /// Resolves buitin type by name
-    fn resolve_builtin_type_by_name(&self, name: &str) -> Ty {
-        match name {
-            "i8" => Ty::Int(IntTy::I8),
-            "i16" => Ty::Int(IntTy::I16),
-            "i32" => Ty::Int(IntTy::I32),
-            "i64" => Ty::Int(IntTy::I64),
-            "u8" => Ty::Int(IntTy::U8),
-            "u16" => Ty::Int(IntTy::U16),
-            "u32" => Ty::Int(IntTy::U32),
-            "u64" => Ty::Int(IntTy::U64),
-            "f32" => Ty::Float(FloatTy::F32),
-            "f64" => Ty::Float(FloatTy::F64),
-            "bool" => Ty::Bool,
-            "string" => Ty::String,
-            "unit" => Ty::Unit,
-            _ => Ty::Error,
-        }
-    }
-
     /// Resolves resolution type
     fn resolve_type(&mut self, res: &Res, args: &[HirTy]) -> Ty {
         match res {
@@ -287,6 +273,29 @@ impl<'hir> TypeChecker<'hir> {
             }
             _ => Ty::Error,
         }
+    }
+
+    fn check_cast(&mut self, from: &Ty, to: &Ty, span: Span) -> Ty {
+        let valid = matches!((from, to),
+            (Ty::Int(_), Ty::Int(_)) |
+            (Ty::Int(_), Ty::Float(_)) |
+            (Ty::Float(_), Ty::Int(_)) |
+            (Ty::Float(_), Ty::Float(_)) |
+            (Ty::Bool, Ty::Int(_)) |
+            (Ty::Int(_), Ty::Bool)
+        );
+
+        if !valid {
+            self.errors.push(TyCheckError::InvalidCast {
+                from: format!("{from}"),
+                to: format!("{to}"),
+                src: span.0.clone(),
+                span: span.1.clone().into(),
+            });
+            return Ty::Error;
+        }
+
+        to.clone()
     }
 
     /// Checks function body
@@ -312,16 +321,18 @@ impl<'hir> TypeChecker<'hir> {
             self.locals.insert(param.local_id, param_ty.clone());
         }
 
-        // Checking body
-        let body = self.hir.body(f.body);
-        let body_ty = self.check_expr(body, body.root_expr);
+        if f.body.is_some() {
+            // Checking body
+            let body = self.hir.body(f.body.unwrap());
+            let body_ty = self.check_expr(body, body.root_expr);
 
-        // Equality coercion
-        self.eq(
-            sig.ret.clone(),
-            body_ty,
-            body.expr(body.root_expr).span.clone(),
-        );
+            // Equality coercion
+            self.eq(
+                sig.ret.clone(),
+                body_ty,
+                body.expr(body.root_expr).span.clone(),
+            );
+        }
 
         // Finalizing results
         self.finalize_results()
@@ -512,6 +523,12 @@ impl<'hir> TypeChecker<'hir> {
 
         // Inferring expression type
         let ty = match &expr.kind {
+            HirExprKind::Cast { expr, ty } => {
+                let expr_ty = self.check_expr(body, *expr);
+                let resolverd_ty = self.lower_hir_ty(ty);
+
+                self.check_cast(&expr_ty, &resolverd_ty, span)
+            }
             HirExprKind::Rec { res, fields } => {
                 self.check_record_ctor(body, span, res, fields)
             }

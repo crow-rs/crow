@@ -1,11 +1,8 @@
 /// Imports
 use crow_ast::{
-    atom::{Effects, Publicity, TypeHint},
-    expr::{Case, Expr, ExprKind, Pat, PatKind},
-    item::{Item, ItemKind, Module},
-    stmt::{Stmt, StmtKind},
+    atom::{Effects, Publicity, TypeHint}, expr::{Case, Expr, ExprKind, Pat, PatKind}, item::{Attribute, Item, ItemKind, Module}, stmt::{Stmt, StmtKind},
 };
-use crow_common::{bug, span::Span};
+use crow_common::{DefId, LocalId, bug, span::Span};
 use crow_fresh::FreshenVec;
 use crow_hir::{
     Hir,
@@ -20,7 +17,7 @@ use crow_hir::{
     stmt::{HirStmt, HirStmtKind},
     ty::{HirEffectRow, HirEffects, HirTy, HirTyKind},
 };
-use crow_resolving::table::{DefId, LocalId, Res, ResolveTable};
+use crow_resolving::table::{Res, ResolveTable};
 
 /// Defines lowering context,
 /// AST → HIR
@@ -89,6 +86,11 @@ impl LoweringCtxt {
 
         // Lowering expresion
         match &expr.kind {
+            ExprKind::Cast(expr, hint) => {
+                let expr_id = self.lower_expr(expr);
+                let ty = self.lower_type_hint(hint);
+                self.alloc_expr(span, HirExprKind::Cast { expr: expr_id, ty })
+            }
             ExprKind::Rec(_, initializators) => {
                 let res = self
                     .resolve
@@ -205,13 +207,13 @@ impl LoweringCtxt {
                 )
             }
             // Lower `ExprKind::Panic` → `ExprKind::Diverge`
-            ExprKind::Panic(msg) => {
-                let msg_id = msg.as_ref().map(|e| self.lower_expr(e));
-                self.alloc_expr(
-                    span,
-                    HirExprKind::Diverge(DivergeKind::Panic, msg_id),
-                )
-            }
+            // ExprKind::Panic(msg) => {
+            //     let msg_id = msg.as_ref().map(|e| self.lower_expr(e));
+            //     self.alloc_expr(
+            //         span,
+            //         HirExprKind::Diverge(DivergeKind::Panic, msg_id),
+            //     )
+            // }
         }
     }
 
@@ -474,6 +476,7 @@ impl LoweringCtxt {
         span: Span,
         def_id: DefId,
         publicity: Publicity,
+        attributes: Vec<Attribute>,
         kind: HirItemKind,
     ) -> ItemId {
         ItemId(self.items.alloc(HirItem {
@@ -481,6 +484,7 @@ impl LoweringCtxt {
             span,
             def_id,
             publicity,
+            attributes,
             kind,
         }))
     }
@@ -587,7 +591,7 @@ impl LoweringCtxt {
                     f.params.iter().map(|p| self.lower_param(p)).collect();
                 let ret = self.lower_type_hint(&f.ret);
                 let effects = self.lower_effects(&f.effects);
-                let body_id = self.lower_body(&f.block);
+                let body_id = if f.block.is_some() { Some(self.lower_body(f.block.as_ref().unwrap())) } else { None };
                 let type_params =
                     self.translate_generics(def_id, &f.generics);
 
@@ -633,7 +637,7 @@ impl LoweringCtxt {
             }
         };
 
-        self.alloc_item(span, def_id, publicity, kind)
+        self.alloc_item(span, def_id, publicity, item.attributes.clone(), kind)
     }
 
     /// Finds top-level def

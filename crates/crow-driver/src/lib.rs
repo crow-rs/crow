@@ -7,13 +7,14 @@ use crate::errors::DriverError;
 use camino::Utf8PathBuf;
 use crow_ast::item;
 use crow_codegen::{codegen_module, comp_ops::TargetConfig};
+use crow_collect_spec_item::collect_special_items;
 use crow_common::{bail, bug, emit};
 use crow_lex::Lexer;
 use crow_lint::run_lints;
 use crow_lower_hir::lower_module;
 use crow_lower_mir::lower_hir_to_mir;
 use crow_mir::{FnId, MirModule, verify};
-use crow_mir_monomorph::{MonoItem, Monomorph};
+use crow_mir_monomorph::{Monomorph};
 use crow_mir_passes::mir_optimize;
 use crow_parse::Parser;
 use crow_resolving::resolver::Resolver;
@@ -249,17 +250,24 @@ impl Driver {
                     for wrn in warnings {
                         emit!(wrn)
                     }
-                    // bulding mir module
+                
+                    //collect lang defs
+                    info!("collecting lang definitions `{name}`");
+                    let mut items = collect_special_items(&hir);
+                    let errors = std::mem::take(&mut items.errors);
+                    for error in errors {
+                        emit!(error);
+                    }
+
+                    //build mir
                     info!("building mir for `{name}`");
-                    let mut mir = lower_hir_to_mir(&hir, &result.0);
+                    let mut mir = lower_hir_to_mir(&hir, &result.0, &items);
 
                     println!("Mir module before passes:");
-                    println!("{}", mir);
+                    //println!("{}", mir);
 
                     println!("Mir module after passes:");
-                    for mir_body in mir.functions.iter_mut() {
-                        mir_optimize(&mir.tcx, mir_body);
-                    }
+                    mir_optimize(&mut mir);
                     println!("{}", mir);
 
                     match verify(&mir) {
@@ -278,7 +286,7 @@ impl Driver {
                         .expect("no `main` function found");
 
                     mono.collect(&mir, entry_id);
-
+                    mono.add_lang_items(&mir);
                     mir_test = Some(mir);
                 }
                 Err(errors) => {
@@ -303,7 +311,7 @@ impl Driver {
 
         let build_cfg = TargetConfig::host();
 
-        codegen_module(&mir_test.unwrap(), &items, "module_name", &build_cfg);
+        codegen_module(&mir_test.unwrap(), &items,"module_name", &build_cfg);
     
         println!("✨ Done!");
     }

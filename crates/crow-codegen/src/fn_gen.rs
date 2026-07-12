@@ -1,6 +1,6 @@
 use crow_mir::{AggregateKind, Constant, MirBody, Operand, Place, Projection, Rvalue, Statement, Terminator, UnOp};
 use crow_mir_monomorph::Instance;
-use crow_tycheck::ty::{FloatTy, IntTy, Ty};
+use crow_types::{FloatTy, IntTy, Ty};
 use inkwell::{IntPredicate, basic_block::BasicBlock as LlvmBlock, builder::Builder, context::Context, types::BasicTypeEnum, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue}};
 
 use crate::{Codegen, ops_builder::build_llvm_binop};
@@ -13,7 +13,7 @@ pub struct FnCodegen<'a, 'llvm, 'mir> {
 }
 
 impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
-    fn ctx(&self) -> &'llvm Context { self.cg.context }
+    pub (crate) fn ctx(&self) -> &'llvm Context { self.cg.context }
     fn builder(&self) -> &Builder<'llvm> { &self.cg.builder }
 
     pub fn codegen(&mut self, fv: FunctionValue<'llvm>) {
@@ -56,6 +56,46 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
 
     fn codegen_stmt(&mut self, stmt: &Statement) {
         match stmt {
+            Statement::Retain(local) => {
+                let retain_fn_id = self.cg.lang_defs.gc.as_ref().unwrap().retain;
+
+                let inst = Instance { fn_id: retain_fn_id, substs: vec![] };
+                if let Some(&fv) = self.cg.instance_fns.get(&inst) {
+                    let ptr = self.locals[local.index()];
+                    let val = self.cg.builder.build_load(
+                        self.ctx().ptr_type(Default::default()),
+                        ptr, "rc_ptr"
+                    ).unwrap();
+                    self.cg.builder.build_call(fv, &[val.into()], "retain").unwrap();
+                }
+            }
+            Statement::Release(local) => {
+                let ty = self.body.locals[local.index()].ty.clone();
+
+                let drop_fn = if let Ty::Adt(def_id, _) = &ty {
+                    self.cg.lang_defs.gc.as_ref().unwrap().drop_glue.get(def_id).and_then(|&fn_id| {
+                        let inst = Instance { fn_id, substs: vec![] };
+                        self.cg.instance_fns.get(&inst).copied()
+                    })
+                } else {
+                    None
+                };
+
+                let fv = drop_fn.or_else(|| {
+                    let fn_id = self.cg.lang_defs.gc.as_ref().unwrap().release;
+                    let inst = Instance { fn_id, substs: vec![] };
+                    self.cg.instance_fns.get(&inst).copied()
+                });
+
+                if let Some(fv) = fv {
+                    let ptr = self.locals[local.index()];
+                    let val = self.cg.builder.build_load(
+                        self.ctx().ptr_type(Default::default()),
+                        ptr, "rc_ptr"
+                    ).unwrap();
+                    self.cg.builder.build_call(fv, &[val.into()], "drop").unwrap();
+                }
+            }
             Statement::Assign(place, rvalue) => {
                 let dest_ty = self.place_ty(place);
                 let val = self.codegen_rvalue(rvalue, &dest_ty);
@@ -97,21 +137,38 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
             }
 
             Terminator::Call { func, args, dest, target } => {
+                if let Operand::Const(Constant::Fn(fn_id, _)) = func {
+                    let intrin_name = self.cg.lang_defs.intrinsics.get(fn_id).cloned();
+
+                    if let Some(intrinsic_name) = intrin_name {
+                        let arg_vals: Vec<BasicValueEnum> = args.iter()
+                            .map(|a| self.codegen_operand(a))
+                            .collect();
+                        let dest_ty = self.place_ty(dest);
+                        let result = self.codegen_intrinsic(&intrinsic_name, &arg_vals, &dest_ty);
+                        if let Some(val) = result {
+                            let ptr = self.codegen_place_ptr(dest);
+                            self.cg.builder.build_store(ptr, val).unwrap();
+                        }
+                        self.cg.builder
+                            .build_unconditional_branch(self.blocks[target.index()])
+                            .unwrap();
+                        return;
+                    }
+                }
+
                 let arg_vals: Vec<BasicMetadataValueEnum<'llvm>> = args
                     .iter()
                     .map(|a| self.codegen_operand(a).into())
                     .collect();
-
                 let callee = self.resolve_callee(func);
                 let call_val = self.builder()
                     .build_call(callee, &arg_vals, "call")
                     .unwrap();
-
                 if let Some(ret_val) = call_val.try_as_basic_value().left() {
                     let dest_ptr = self.codegen_place_ptr(dest);
                     self.builder().build_store(dest_ptr, ret_val).unwrap();
                 }
-
                 self.builder()
                     .build_unconditional_branch(self.blocks[target.index()])
                     .unwrap();
@@ -239,17 +296,47 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
         dest_ty: &Ty,
     ) -> BasicValueEnum<'llvm> {
         match kind {
-            AggregateKind::Adt { .. } => {
-                let struct_ty = self.cg.types.construct_type(self.cg.tcx, dest_ty);
-                let mut agg = struct_ty.into_struct_type()
-                    .get_undef();
+            AggregateKind::Adt { def_id, variant } => {
+                let adt = self.cg.tcx.adt(*def_id);
+                let fields = &adt.variants[*variant as usize].fields;
+
+                let size: u32 = fields.iter()
+                    .map(|f| self.cg.types.type_size(self.cg.tcx, f))
+                    .sum();
+
+                let alloc_fn_id = self.cg.lang_defs.gc.as_ref().unwrap().rc_alloc;
+
+                let inst = Instance { fn_id: alloc_fn_id, substs: vec![] };
+                let alloc_fv = self.cg.instance_fns.get(&inst)
+                .unwrap_or_else(|| panic!("Not found instance"));
+
+                let size_val = self.ctx().i64_type().const_int(size as u64, false);
+
+                let call_result = self.cg.builder
+                    .build_call(*alloc_fv, &[size_val.into()], "rc_alloc")
+                    .unwrap();
+
+                let ptr = call_result
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap_or_else(|| panic!(
+                        "BUG: rc_alloc returned void, expected raw_ptr"
+                    ))
+                    .into_pointer_value();
+
+                let mut offset: u32 = 0;
                 for (i, val) in vals.iter().enumerate() {
-                    agg = self.builder()
-                        .build_insert_value(agg, *val, i as u32, "field")
-                        .unwrap()
-                        .into_struct_value();
+                    let off = self.ctx().i64_type().const_int(offset as u64, false);
+                    let field_ptr = unsafe {
+                        self.cg.builder.build_in_bounds_gep(
+                            self.ctx().i8_type(), ptr, &[off], "field_ptr"
+                        ).unwrap()
+                    };
+                    self.cg.builder.build_store(field_ptr, *val).unwrap();
+                    offset += self.cg.types.type_size(self.cg.tcx, &fields[i]);
                 }
-                agg.as_basic_value_enum()
+
+                ptr.as_basic_value_enum()
             }
             AggregateKind::Closure { .. } => {
                 let struct_ty = self.cg.types.construct_type(self.cg.tcx, dest_ty);
@@ -362,20 +449,52 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
                     }
                 }
                 Projection::Field(idx) => {
-                    let field_tys: Vec<BasicTypeEnum<'llvm>> = match &current_ty {
-                        Ty::Adt(def_id, _) => self.cg.tcx.adt(*def_id)
-                            .variants[active_variant as usize]
-                            .fields
-                            .iter()
-                            .map(|f| self.cg.types.construct_type(self.cg.tcx, f))
-                            .collect(),
+                    match &current_ty {
+                        Ty::Adt(def_id, _) => {
+                            let adt = self.cg.tcx.adt(*def_id);
+                            let fields = &adt.variants[active_variant as usize].fields;
+
+                            let mut offset: u32 = 0;
+                            for i in 0..*idx {
+                                offset += self.cg.types.type_size(self.cg.tcx, &fields[i as usize]);
+                            }
+
+                            let heap_ptr = self.cg.builder
+                                .build_load(
+                                    self.ctx().ptr_type(Default::default()),
+                                    ptr,
+                                    "heap_ptr",
+                                ).unwrap().into_pointer_value();
+
+                            let off = self.ctx().i64_type().const_int(offset as u64, false);
+                            ptr = unsafe {
+                                self.cg.builder.build_in_bounds_gep(
+                                    self.ctx().i8_type(), heap_ptr, &[off], "field_ptr"
+                                ).unwrap()
+                            };
+
+                            current_ty = fields[*idx as usize].clone();
+                        }
                         _ => panic!("field on non-ADT"),
-                    };
-                    let variant_ty = self.ctx().struct_type(&field_tys, false);
-                    ptr = self.cg.builder
-                        .build_struct_gep(variant_ty, ptr, *idx, "field_ptr")
-                        .unwrap();
-                    current_ty = match &current_ty {
+                    }
+                }
+            }
+        }
+
+        ptr
+    }
+
+    fn place_ty(&self, place: &Place) -> Ty {
+        let mut ty = self.body.locals[place.local.index()].ty.clone();
+        let mut active_variant: u32 = 0;
+
+        for proj in &place.proj {
+            match proj {
+                Projection::Downcast(v) => {
+                    active_variant = *v;
+                }
+                Projection::Field(idx) => {
+                    ty = match &ty {
                         Ty::Adt(def_id, _) => {
                             self.cg.tcx.adt(*def_id).variants[active_variant as usize]
                                 .fields[*idx as usize].clone()
@@ -387,11 +506,7 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
             }
         }
 
-        ptr
-    }
-
-    fn place_ty(&mut self, place: &Place) -> Ty {
-        self.body.locals[place.local.index()].ty.clone()
+        ty
     }
 
     fn operand_ty(&mut self, op: &Operand) -> Ty {
@@ -475,7 +590,7 @@ impl<'a, 'llvm, 'mir> FnCodegen<'a, 'llvm, 'mir> {
         }
     }
 
-    fn build_trap(&mut self) {
+    pub (crate) fn build_trap(&mut self) {
         let trap = inkwell::intrinsics::Intrinsic::find("llvm.trap").unwrap();
         let trap_fn = trap
             .get_declaration(&self.cg.module, &[])

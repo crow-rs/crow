@@ -1,8 +1,8 @@
 /// Imports
 use crate::{id::*, ty::HirTy};
 use crow_ast::atom::{BinOp, Lit, UnOp};
-use crow_common::span::Span;
-use crow_resolving::table::{LocalId, Res};
+use crow_common::{LocalId, span::Span};
+use crow_resolving::table::{Res};
 
 /// Defines hir expression
 #[derive(Debug, Clone)]
@@ -33,6 +33,10 @@ pub enum HirExprKind {
     },
     Block(Vec<StmtId>),
     Diverge(DivergeKind, Option<ExprId>),
+    Cast {
+        expr: ExprId, 
+        ty: HirTy
+    },
     Rec {
         res: Res,
         fields: Vec<(String, ExprId)>,
@@ -43,7 +47,6 @@ pub enum HirExprKind {
 #[derive(Debug, Clone, Copy)]
 pub enum DivergeKind {
     Todo,
-    Panic,
 }
 
 /// Defines hir parameter

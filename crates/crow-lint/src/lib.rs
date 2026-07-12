@@ -1,5 +1,5 @@
 use crow_ast::atom::Mutability;
-use crow_common::span::Span;
+use crow_common::{LocalId, span::Span};
 use crow_hir::{
     Hir,
     body::HirBody,
@@ -10,8 +10,7 @@ use crow_hir::{
     stmt::{HirStmt, HirStmtKind},
 };
 use crow_tycheck::{
-    ty::Ty,
-    typeck::{TypeckBody, TypeckOutput},
+    typeck::TypeckOutput,
 };
 
 pub mod warnings;
@@ -120,7 +119,13 @@ impl LintDriver {
         tycx: &TypeckOutput,
     ) {
         let body_id = match &item.kind {
-            HirItemKind::Fun(f) => Some(f.body),
+            HirItemKind::Fun(f) => {
+                if f.body.is_some() {
+                    Some(f.body.unwrap())
+                } else {
+                    None
+                }
+            },
             HirItemKind::Const(c) => Some(c.body),
             HirItemKind::Struct(_)
             | HirItemKind::Enum(_)
@@ -163,6 +168,9 @@ impl LintDriver {
         }
 
         match &expr.kind {
+            HirExprKind::Cast { expr, .. } => {
+                self.visit_expr(cx, *expr);
+            }
             HirExprKind::Rec { fields, .. } => {
                 for field in fields {
                     self.visit_expr(cx, field.1);
@@ -275,7 +283,7 @@ impl LintPass for UnusedResultLint {
         if let HirStmtKind::Expr(eid) = &stmt.kind {
             let expr = cx.expr(*eid);
             if let HirExprKind::Call(callee_id, _) = &expr.kind {
-                if cx.expr_ty(*eid).is_some_and(|ty| *ty == Ty::Unit) {
+                if cx.expr_ty(*eid).is_some_and(|ty| *ty == Ty::Unit || *ty == Ty::Never) {
                     return;
                 }
                 cx.warn(LinterWarnings::UnusedResult {
@@ -288,7 +296,8 @@ impl LintPass for UnusedResultLint {
     }
 }
 
-use crow_resolving::table::{LocalId, Res};
+use crow_resolving::table::Res;
+use crow_types::Ty;
 use std::collections::{HashMap, HashSet};
 
 use crate::warnings::LinterWarnings;

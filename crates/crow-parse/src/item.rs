@@ -2,7 +2,7 @@
 use crate::{Parser, errors::ParseError};
 use crow_ast::{
     atom::{Publicity, TypeHint}, item::{
-        AdtAlt, AdtRec, AltField, Enum, Fun, Item, ItemKind, NativeFun, RecField, Use, UseKind, UsePath, Variant,
+        AdtAlt, AdtRec, AltField, Attribute, Enum, Fun, Item, ItemKind, NativeFun, RecField, Use, UseKind, UsePath, Variant,
     },
 };
 use crow_common::bail;
@@ -162,10 +162,12 @@ impl<'s> Parser<'s> {
         };
 
         if !is_native {
-            // Parsing body
-            let block = self.block();
+            let block = if self.check(TokenKind::Lbrace) {
+                Some(self.block())
+            } else {
+                None
+            };
             let end_span = self.prev().span.clone();
-
             return ItemKind::Fun(Fun {
                 span: start_span + end_span,
                 name: name.lexeme,
@@ -248,29 +250,48 @@ impl<'s> Parser<'s> {
         }
     }
 
-    // Parses top-level item
-    pub(crate) fn item(&mut self, publicity: Publicity) -> Item {
-        // Parsing item kind
-        let tk = self.peek().clone();
+    fn attributes(&mut self) -> Attribute {
+        self.bump(); //skip @
+        let attr_name = self.expect(TokenKind::Id);
+
+        let args = self.sep_by(TokenKind::Lparen, TokenKind::Rparen, TokenKind::Comma, |p| {
+            p.expect(TokenKind::String).lexeme
+        });
+
+        Attribute { 
+            span: attr_name.span.clone(), 
+            name: attr_name.lexeme, 
+            args 
+        }
+    }
+
+   pub(crate) fn item(&mut self, publicity: Publicity) -> Item {
         let start_span = self.peek().span.clone();
+
+        let mut attributes = Vec::new();
+        while self.check(TokenKind::AtSign) {
+            attributes.push(self.attributes());
+        }
+
+        let tk = self.peek().clone();
         let kind = match &tk.kind {
             TokenKind::Rec => self.rec_item_kind(),
             TokenKind::Alt => self.alt_item_kind(),
             TokenKind::Enum => self.enum_item_kind(),
             TokenKind::Fun | TokenKind::Native => self.fun_item_kind(matches!(tk.kind, TokenKind::Native)),
-
             _ => bail!(ParseError::UnexpectedItemToken {
                 got: tk.kind,
                 src: self.source.clone(),
                 span: tk.span.1.into(),
             }),
         };
-        let end_span = self.prev().span.clone();
 
+        let end_span = self.prev().span.clone();
         Item {
             span: start_span + end_span,
             publicity,
             kind,
+            attributes,
         }
     }
 }

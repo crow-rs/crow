@@ -215,28 +215,6 @@ impl<'s> Parser<'s> {
         }
     }
 
-    /// Panic expression parsing
-    fn panic_expr(&mut self) -> Expr {
-        // Bumping `panic`
-        let start_span = self.peek().span.clone();
-        self.bump();
-
-        // If `as` presented, parsing panic text
-        let text = if self.check(TokenKind::As) {
-            self.bump();
-            let text = Box::new(self.expr());
-            Some(text)
-        } else {
-            None
-        };
-        let end_span = self.prev().span.clone();
-
-        Expr {
-            span: start_span + end_span,
-            kind: ExprKind::Panic(text),
-        }
-    }
-
     /// Todo expression parsing
     fn todo_expr(&mut self) -> Expr {
         // Bumping `todo`
@@ -306,7 +284,6 @@ impl<'s> Parser<'s> {
             TokenKind::Fun => self.fun_expr(),
             // Todo and panic parsing
             TokenKind::Todo => self.todo_expr(),
-            TokenKind::Panic => self.panic_expr(),
             // Otherwise, bailing error
             _ => bail!(ParseError::UnexpectedExprToken {
                 got: tk.kind,
@@ -339,10 +316,27 @@ impl<'s> Parser<'s> {
         self.atom_expr()
     }
 
+    fn cast_expr(&mut self) -> Expr {
+        let start_span = self.peek().span.clone();
+        let mut expr = self.unary_expr();
+
+        while self.check(TokenKind::As) {
+            self.bump();
+            let ty = self.type_hint();
+            let end_span = self.prev().span.clone();
+            expr = Expr {
+                span: start_span.clone() + end_span,
+                kind: ExprKind::Cast(Box::new(expr), ty),
+            };
+        }
+
+        expr
+    }
+
     /// Factor expression parsing
     fn factor_expr(&mut self) -> Expr {
         let start_span = self.peek().span.clone();
-        let mut left = self.unary_expr();
+        let mut left = self.cast_expr();
 
         while self.check(TokenKind::Star)
             || self.check(TokenKind::Slash)
@@ -391,10 +385,25 @@ impl<'s> Parser<'s> {
         left
     }
 
+    fn concat_expr(&mut self) -> Expr {
+        let start_span = self.peek().span.clone();
+        let mut left = self.term_expr();
+        while self.check(TokenKind::PlusPlus) {
+            self.bump();
+            let right = self.term_expr();
+            let end_span = self.prev().span.clone();
+            left = Expr {
+                span: start_span.clone() + end_span,
+                kind: ExprKind::Bin(Box::new(left), Box::new(right), BinOp::Concat),
+            };
+        }
+        left
+    }
+
     /// Compare expression parsing
     fn compare_expr(&mut self) -> Expr {
         let start_span = self.peek().span.clone();
-        let mut left = self.term_expr();
+        let mut left = self.concat_expr();
 
         while self.check(TokenKind::Ge)
             || self.check(TokenKind::Gt)

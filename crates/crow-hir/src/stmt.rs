@@ -1,8 +1,7 @@
 /// Imports
 use crate::{id::*, ty::HirTy};
 use crow_ast::atom::Mutability;
-use crow_common::span::Span;
-use crow_resolving::table::LocalId;
+use crow_common::{LocalId, span::Span};
 
 /// Defines hir statement
 #[derive(Debug, Clone)]

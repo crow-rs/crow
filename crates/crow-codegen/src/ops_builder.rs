@@ -1,5 +1,5 @@
 use crow_mir::BinOp;
-use crow_tycheck::ty::Ty;
+use crow_types::Ty;
 use inkwell::{FloatPredicate, IntPredicate, builder::Builder, values::{BasicValue, BasicValueEnum}};
 
 fn build_sum<'llvm>(builder: &Builder<'llvm>, _type: &Ty, lhs: BasicValueEnum<'llvm>, rhs: BasicValueEnum<'llvm>) -> BasicValueEnum<'llvm> {
@@ -10,6 +10,8 @@ fn build_sum<'llvm>(builder: &Builder<'llvm>, _type: &Ty, lhs: BasicValueEnum<'l
         Ty::Float(_) => 
             builder.build_float_add(lhs.into_float_value(), rhs.into_float_value(), "float_add")
             .unwrap().as_basic_value_enum(),
+        Ty::String =>
+            panic!("BUG: string concat not folded by ConstProp"),
         _ => panic!("{:?}", _type)
     }
 }

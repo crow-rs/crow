@@ -24,6 +24,28 @@ impl Monomorph {
         Self { items: Vec::new(), seen: HashMap::new() }
     }
 
+    pub fn add_lang_items(&mut self, mir: &MirModule) {
+        let mut add = |fn_id: FnId| {
+            let item = MonoItem::Fn(Instance { fn_id, substs: vec![] });
+            if self.seen.insert(item.clone(), self.items.len()).is_none() {
+                self.items.push(item);
+            }
+        };
+
+        if let Some(panic_fn) = mir.lang.panic {
+            add(panic_fn);
+        }
+
+        if let Some(gc) = &mir.lang.gc {
+            add(gc.rc_alloc);
+            add(gc.retain);
+            add(gc.release);
+            for (_, &fn_id) in &gc.drop_glue {
+                add(fn_id);
+            }
+        }
+}
+
     pub fn collect(&mut self, module: &MirModule, entry: FnId) {
         let root = Instance { fn_id: entry, substs: vec![] };
         self.visit(module, root);

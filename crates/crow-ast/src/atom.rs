@@ -34,7 +34,7 @@ pub enum BinOp {
     Xor,    // `^`
     BitAnd, // `&`
     BitOr,  // `|`
-    Concat, // `<>`
+    Concat, // `++`
 }
 
 /// Assignment operation used in assignment expressions

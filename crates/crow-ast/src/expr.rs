@@ -1,7 +1,6 @@
 /// Imports
 use crate::{
-    atom::{BinOp, Lit, Mutability, Param, UnOp},
-    stmt::Stmt,
+    atom::{BinOp, Lit, Mutability, Param, TypeHint, UnOp}, stmt::Stmt,
 };
 use crow_common::span::Span;
 
@@ -95,8 +94,7 @@ pub enum ExprKind {
     /// Represents todo expression (e.g `todo as "simple todo"`)
     Todo(Option<Box<Expr>>),
 
-    /// Represents panic expression (e.g `panic as "simple panic"`)
-    Panic(Option<Box<Expr>>),
+    Cast(Box<Expr>, TypeHint)
 }
 
 /// Represents expression

@@ -394,7 +394,6 @@ impl<'s> Lexer<'s> {
             "as" => TokenKind::As,
             "for" => TokenKind::For,
             "todo" => TokenKind::Todo,
-            "panic" => TokenKind::Panic,
             "const" => TokenKind::Const,
             "native" => TokenKind::Native,
             _ => TokenKind::Id,
@@ -510,6 +509,9 @@ impl<'s> Iterator for Lexer<'s> {
             (Some('+'), Some('=')) => {
                 Some(self.advance_twice_with(TokenKind::PlusEq, "+="))
             }
+            (Some('+'), Some('+')) => {
+                Some(self.advance_twice_with(TokenKind::PlusPlus, "++"))
+            }
             (Some('-'), Some('=')) => {
                 Some(self.advance_twice_with(TokenKind::MinusEq, "-="))
             }
@@ -586,6 +588,9 @@ impl<'s> Iterator for Lexer<'s> {
             (Some('.'), _) => Some(self.advance_with(TokenKind::Dot, ".")),
             (Some(','), _) => {
                 Some(self.advance_with(TokenKind::Comma, ","))
+            }
+            (Some('@'), _) => {
+                Some(self.advance_with(TokenKind::AtSign, "@"))
             }
             (Some('{'), _) => {
                 Some(self.advance_with(TokenKind::Lbrace, "{"))

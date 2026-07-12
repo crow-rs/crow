@@ -16,6 +16,16 @@ pub enum TyCheckError {
         #[label("type missmatch here...")]
         span: SourceSpan,
     },
+    #[error("invalid cast operation from: `{from:?} to: `{to:?}`")]
+    #[diagnostic(code(ty_check::invalid_cast))]
+    InvalidCast {
+        from: String,
+        to: String,
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("invalid cast here...")]
+        span: SourceSpan,
+    },
     #[error("occurs check failure. vid `{vid:?}` for type `{ty:?}`")]
     #[diagnostic(code(ty_check::occurs_check))]
     OccursCheck {

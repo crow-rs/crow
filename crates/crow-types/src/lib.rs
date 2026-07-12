@@ -1,7 +1,5 @@
-/// Imports
-use crate::errors::TyCheckError;
 use core::fmt;
-use crow_resolving::table::DefId;
+use crow_common::DefId;
 use ena::unify::{EqUnifyValue, UnifyKey, UnifyValue};
 
 /// Type variable id
@@ -24,6 +22,7 @@ pub enum Ty {
     FloatVar(FloatVid),
     Int(IntTy),
     Float(FloatTy),
+    RawPtr, // todo - generic type
     Bool,
     String,
     Unit,
@@ -32,6 +31,38 @@ pub enum Ty {
     Fn(Vec<Ty>, Box<Ty>),
     Param(DefId, u32),
     Error,
+}
+
+impl Ty {
+    pub fn from_name(name: &str) -> Ty {
+        match name {
+            "i8" => Ty::Int(IntTy::I8),
+            "i16" => Ty::Int(IntTy::I16),
+            "i32" => Ty::Int(IntTy::I32),
+            "i64" => Ty::Int(IntTy::I64),
+            "u8" => Ty::Int(IntTy::U8),
+            "u16" => Ty::Int(IntTy::U16),
+            "u32" => Ty::Int(IntTy::U32),
+            "u64" => Ty::Int(IntTy::U64),
+            "f32" => Ty::Float(FloatTy::F32),
+            "f64" => Ty::Float(FloatTy::F64),
+            "raw_ptr" => Ty::RawPtr,
+            "bool" => Ty::Bool,
+            "str" => Ty::String,
+            "unit" => Ty::Unit,
+            "!" => Ty::Never,
+            _ => Ty::Error,
+        }
+    }
+
+    pub fn builtin_names() -> &'static [&'static str] {
+        &[
+            "i8", "i16", "i32", "i64",
+            "u8", "u16", "u32", "u64",
+            "f32", "f64",
+            "bool", "str", "unit", "raw_ptr", "!",
+        ]
+    }
 }
 
 /// Int type
@@ -101,17 +132,21 @@ impl UnifyKey for TyVid {
     }
 }
 
+pub enum UnificationError {
+    InvalidTypeConversion
+}
+
 /// Unify-value implementation for type value
 impl UnifyValue for TyValue {
-    type Error = TyCheckError;
+    type Error = UnificationError;
 
-    fn unify_values(a: &Self, b: &Self) -> Result<Self, TyCheckError> {
+    fn unify_values(a: &Self, b: &Self) -> Result<Self, UnificationError> {
         match (&a.0, &b.0) {
             (None, None) => Ok(TyValue(None)),
             (Some(v), None) | (None, Some(v)) => {
                 Ok(TyValue(Some(v.clone())))
             }
-            (Some(_), Some(_)) => Err(TyCheckError::InvalidTypeConversion),
+            (Some(_), Some(_)) => Err(UnificationError::InvalidTypeConversion),
         }
     }
 }
@@ -185,6 +220,7 @@ impl fmt::Display for Ty {
             Ty::IntVar(vid) => write!(f, "?int{}", vid.0),
             Ty::FloatVar(vid) => write!(f, "?float{}", vid.0),
             Ty::Param(_, idx) => write!(f, "T{}", idx),
+            Ty::RawPtr => write!(f, "raw"),
             Ty::Adt(def_id, args) => {
                 write!(f, "adt#{}", def_id.0)?;
                 if !args.is_empty() {

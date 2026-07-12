@@ -126,6 +126,8 @@ impl fmt::Display for Statement {
             Statement::Assign(place, rvalue) => write!(f, "{place} = {rvalue}"),
             Statement::StorageLive(l) => write!(f, "StorageLive(_{l})", l = l.0),
             Statement::StorageDead(l) => write!(f, "StorageDead(_{l})", l = l.0),
+            Statement::Release(l) => write!(f, "__release__({l})", l = l.0),
+            Statement::Retain(l) => write!(f, "__retain__({l})", l = l.0),
             Statement::Nop => write!(f, "nop"),
         }
     }
@@ -173,7 +175,11 @@ impl fmt::Display for Terminator {
 
 impl fmt::Display for MirBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.locals.is_empty() {
+            return writeln!(f, "fn {}() = <intrinsic>", self.name);
+        }
         write!(f, "fn {}(", self.name)?;
+
         for i in 1..=self.arg_count {
             if i > 1 { write!(f, ", ")?; }
             let decl = &self.locals[i];

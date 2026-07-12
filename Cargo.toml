@@ -2,7 +2,7 @@
 members = [
     "crates/crow-ast",
     "crates/crow-cli",
-    "crates/crow-codegen", 
+    "crates/crow-codegen", "crates/crow-collect-spec-item", 
     "crates/crow-common",
     "crates/crow-driver", 
     "crates/crow-fresh", 
@@ -16,7 +16,7 @@ members = [
     "crates/crow-mir-passes",
     "crates/crow-parse", 
     "crates/crow-resolving", 
-    "crates/crow-tycheck",
+    "crates/crow-tycheck", "crates/crow-types",
 ]
 resolver = "3"
 doctest = false

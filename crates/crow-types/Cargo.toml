@@ -1,0 +1,8 @@
+[package]
+name = "crow-types"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crow-common = { path = "../crow-common" }
+ena = "0.14.4"

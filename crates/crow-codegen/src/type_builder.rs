@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
+use crow_common::DefId;
 use crow_mir::{MirTyCtxt};
-use crow_resolving::table::DefId;
-use crow_tycheck::ty::{FloatTy, IntTy, Ty};
-use inkwell::{context::Context, types::{BasicTypeEnum, StructType}};
+use crow_types::{FloatTy, IntTy, Ty};
+use inkwell::{AddressSpace, context::Context, types::{BasicTypeEnum, StructType}};
 
 pub struct TypeCache<'llvm> {
     ctx: &'llvm Context,
@@ -29,7 +29,8 @@ impl<'llvm> TypeCache<'llvm> {
             ).into(),
             Ty::Unit => self.ctx.i8_type().into(),
             Ty::Never => self.ctx.i8_type().into(),
-            Ty::Adt(def_id, _) => self.adt_type(tcx, *def_id).into(),
+            Ty::Adt(def_id, _) => self.ctx.ptr_type(inkwell::AddressSpace::default()).into(),
+            Ty::RawPtr => self.ctx.ptr_type(AddressSpace::default()).into(),
             _ => panic!("unsupported type for codegen: {ty}"),
         }
     }
@@ -79,9 +80,10 @@ impl<'llvm> TypeCache<'llvm> {
         st
     }
 
-    fn type_size(&mut self, tcx: &MirTyCtxt, ty: &Ty) -> u32 {
+    pub (crate) fn type_size(&mut self, tcx: &MirTyCtxt, ty: &Ty) -> u32 {
         match ty {
             Ty::Bool => 1,
+            Ty::RawPtr => 8, // todo!!!! calculate from target config
             Ty::Int(IntTy::I8  | IntTy::U8)  => 1,
             Ty::Int(IntTy::I16 | IntTy::U16) => 2,
             Ty::Int(IntTy::I32 | IntTy::U32) => 4,

@@ -21,7 +21,6 @@ pub enum TokenKind {
     For,         // `for` keyword
     None,        // `none` keyword
     Todo,        // `todo` keyword
-    Panic,       // `panic` keyword
     Const,       // `const` keyword
     Comma,       // ,
     Dot,         // .
@@ -32,6 +31,7 @@ pub enum TokenKind {
     Lbracket,    // [
     Rbracket,    // ]
     Plus,        // +
+    PlusPlus,    // ++
     Minus,       // -
     Star,        // *
     Slash,       // /
@@ -64,6 +64,7 @@ pub enum TokenKind {
     String,      // "quoted text"
     Id,          // identifier
     Bool,        // bool
+    AtSign       // @
 }
 
 /// Represents token

@@ -2,7 +2,7 @@
 use crate::{
     errors::ResolverErrors,
     table::{
-        DefId, DefKind, FieldDef, LocalId, Res, ResolveTable,
+        DefKind, FieldDef, Res, ResolveTable,
         TypeParamDef, VariantDef,
     },
 };
@@ -15,8 +15,9 @@ use crow_ast::{
     },
     stmt::{Stmt, StmtKind},
 };
-use crow_common::{bug, span::Span};
+use crow_common::{DefId, LocalId, bug, span::Span};
 use crow_fresh::Freshen;
+use crow_types::Ty;
 use std::collections::{HashMap, HashSet};
 
 /// Defines single rib
@@ -77,12 +78,6 @@ impl RibsStack {
     }
 }
 
-/// All the builtin-types
-const BUILTIN_TYPES: [&'static str; 13] = [
-    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
-    "bool", "string", "unit",
-];
-
 /// Defines a resolver used to resolve
 /// all the top-level items, locals and type hints
 pub struct Resolver {
@@ -123,7 +118,7 @@ impl Resolver {
 
     /// Registers builtin types
     fn register_builtin_types(&mut self) {
-        for name in BUILTIN_TYPES {
+        for name in Ty::builtin_names() {
             let def_id = DefId(self.freshen_defs.fresh());
             self.table.def_kinds.insert(def_id, DefKind::BuiltinType);
             self.table.def_names.insert(def_id, name.to_string());
@@ -408,6 +403,10 @@ impl Resolver {
     /// Resolves expression
     fn resolve_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::Cast(expr, hint) => {
+                self.resolve_expr(expr);
+                self.resolve_type_hint(hint);
+            }
             ExprKind::Rec(rec_name, initializators) => {
                 self.resolve_local(rec_name, expr.span.clone());
                 for init in initializators {
@@ -479,11 +478,6 @@ impl Resolver {
                 self.ribs.pop();
             }
             ExprKind::Todo(msg) => {
-                if let Some(e) = msg {
-                    self.resolve_expr(e);
-                }
-            }
-            ExprKind::Panic(msg) => {
                 if let Some(e) = msg {
                     self.resolve_expr(e);
                 }
@@ -604,7 +598,6 @@ impl Resolver {
                         Some(Res::Def(_, did)) => *did,
                         _ => continue,
                     };
-
                     let tps: Vec<(String, DefId)> = self
                         .table
                         .type_params
@@ -612,24 +605,24 @@ impl Resolver {
                         .filter(|(_, tp)| tp.parent == fn_def_id)
                         .map(|(did, tp)| (tp.name.clone(), *did))
                         .collect();
-
                     for (name, did) in tps {
                         self.ribs.insert(
                             name,
                             Res::Def(DefKind::TypeParam, did),
                         );
                     }
-
                     for param in &f.params {
                         self.define_local(
                             &param.name,
-                            Mutability::Immut, // todo: support mutable params
+                            Mutability::Immut,
                             param.span.clone(),
                         );
                         self.resolve_type_hint(&param.hint);
                     }
                     self.resolve_type_hint(&f.ret);
-                    self.resolve_expr(&f.block);
+                    if let Some(block) = &f.block {
+                        self.resolve_expr(block);
+                    }
                     self.ribs.pop();
                 }
                 ItemKind::Native(n) => {

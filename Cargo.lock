@@ -140,12 +140,24 @@ dependencies = [
 name = "crow-codegen"
 version = "0.1.0"
 dependencies = [
+ "crow-collect-spec-item",
+ "crow-common",
  "crow-mir",
  "crow-mir-monomorph",
- "crow-resolving",
- "crow-tycheck",
+ "crow-types",
  "inkwell",
  "llvm-sys",
+ "miette",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "crow-collect-spec-item"
+version = "0.1.0"
+dependencies = [
+ "crow-ast",
+ "crow-common",
+ "crow-hir",
  "miette",
  "thiserror 2.0.18",
 ]
@@ -164,6 +176,7 @@ dependencies = [
  "camino",
  "crow-ast",
  "crow-codegen",
+ "crow-collect-spec-item",
  "crow-common",
  "crow-hir",
  "crow-lex",
@@ -220,6 +233,7 @@ dependencies = [
  "crow-lex",
  "crow-resolving",
  "crow-tycheck",
+ "crow-types",
  "miette",
  "thiserror 2.0.18",
 ]
@@ -241,10 +255,13 @@ name = "crow-lower-mir"
 version = "0.1.0"
 dependencies = [
  "crow-ast",
+ "crow-collect-spec-item",
+ "crow-common",
  "crow-hir",
  "crow-mir",
  "crow-resolving",
  "crow-tycheck",
+ "crow-types",
 ]
 
 [[package]]
@@ -252,8 +269,8 @@ name = "crow-mir"
 version = "0.1.0"
 dependencies = [
  "crow-ast",
- "crow-resolving",
- "crow-tycheck",
+ "crow-common",
+ "crow-types",
 ]
 
 [[package]]
@@ -268,7 +285,10 @@ dependencies = [
 name = "crow-mir-passes"
 version = "0.1.0"
 dependencies = [
+ "crow-collect-spec-item",
  "crow-mir",
+ "crow-resolving",
+ "crow-types",
 ]
 
 [[package]]
@@ -290,6 +310,7 @@ dependencies = [
  "crow-common",
  "crow-fresh",
  "crow-lex",
+ "crow-types",
  "miette",
  "thiserror 2.0.18",
 ]
@@ -303,9 +324,18 @@ dependencies = [
  "crow-hir",
  "crow-lex",
  "crow-resolving",
+ "crow-types",
  "ena",
  "miette",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "crow-types"
+version = "0.1.0"
+dependencies = [
+ "crow-common",
+ "ena",
 ]
 
 [[package]]
