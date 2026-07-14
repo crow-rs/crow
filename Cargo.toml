@@ -2,7 +2,8 @@
 members = [
     "crates/crow-ast",
     "crates/crow-cli",
-    "crates/crow-codegen", "crates/crow-collect-spec-item", 
+    "crates/crow-codegen", 
+    "crates/crow-collect-spec-item", 
     "crates/crow-common",
     "crates/crow-driver", 
     "crates/crow-fresh", 
@@ -13,10 +14,12 @@ members = [
     "crates/crow-lower-mir",
     "crates/crow-mir", 
     "crates/crow-mir-monomorph", 
-    "crates/crow-mir-passes",
+    "crates/crow-mir-passes", "crates/crow-mod-codec-ty",
+     "crates/crow-module-codec",
     "crates/crow-parse", 
     "crates/crow-resolving", 
-    "crates/crow-tycheck", "crates/crow-types",
+    "crates/crow-tycheck", 
+    "crates/crow-types",
 ]
 resolver = "3"
 doctest = false

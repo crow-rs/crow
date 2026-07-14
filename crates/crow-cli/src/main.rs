@@ -44,11 +44,11 @@ fn main() {
     // ));
 
     
-    let mut driver = Driver::new(DriverConfig::new(
+    let driver = Driver::new(DriverConfig::new(
         Utf8PathBuf::from("/home/f0rits/Documents/crow/test/src"),
         Utf8PathBuf::from("/home/f0rits/Documents/crow/test/target"),
     ));
     
 
-    driver.perform_compilation();
+    driver.compile();
 }

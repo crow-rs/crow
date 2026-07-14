@@ -1,0 +1,24 @@
+{
+  "module_name": "test",
+  "functions": [
+    {
+      "name": "print_i8",
+      "params": [
+        [
+          "n",
+          "i8"
+        ]
+      ],
+      "ret": "()",
+      "is_native": false
+    },
+    {
+      "name": "read_byte",
+      "params": [],
+      "ret": "i8",
+      "is_native": false
+    }
+  ],
+  "types": [],
+  "constants": []
+}

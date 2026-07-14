@@ -5,6 +5,7 @@ use std::fmt::Debug;
 /// Represents token kind
 #[derive(Debug, PartialEq, Copy, Clone, Eq)]
 pub enum TokenKind {
+    Module,       // 'module' keyword
     Use,         // `use` keyword
     Enum,        // `enum` keyword
     Rec,         // `rec` keywword

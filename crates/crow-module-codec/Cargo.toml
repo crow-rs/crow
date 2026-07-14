@@ -1,0 +1,11 @@
+[package]
+name = "crow-module-codec"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crow-ast ={ path = "../crow-ast"}
+crow-hir ={ path = "../crow-hir"}
+crow-types ={ path = "../crow-types"}
+crow-tycheck ={ path = "../crow-tycheck"}
+crow-mod-codec-ty = { path = "../crow-mod-codec-ty" }

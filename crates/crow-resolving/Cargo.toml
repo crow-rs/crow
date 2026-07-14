@@ -9,5 +9,6 @@ crow-lex = { path = "../crow-lex" }
 crow-common = { path = "../crow-common" }
 crow-fresh = { path = "../crow-fresh" }
 crow-types = { path = "../crow-types" }
+crow-mod-codec-ty = { path = "../crow-mod-codec-ty" }
 miette = { git = "https://github.com/crow-rs/miette" }
 thiserror = "2.0.18"

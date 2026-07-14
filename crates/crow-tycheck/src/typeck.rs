@@ -12,6 +12,7 @@ use crow_hir::item::{HirConstDef, HirFnDef, HirItemKind};
 use crow_hir::pat::HirPatKind;
 use crow_hir::stmt::HirStmtKind;
 use crow_hir::ty::{HirTy, HirTyKind};
+use crow_mod_codec_ty::{ExportedTypeKind, ModuleTop};
 use crow_resolving::table::{DefKind, Res};
 use crow_types::{IntTy, Ty};
 use std::collections::{HashMap, HashSet};
@@ -28,7 +29,9 @@ pub struct TypeckBody {
 pub struct TypeckOutput {
     pub bodies: Vec<TypeckBody>,
     pub prim_tys: HashMap<DefId, Ty>,
-    //pub adt_field_tys: HashMap<DefId, Vec<Vec<Ty>>>,
+    pub fn_sigs: HashMap<DefId, FnSig>,
+    pub constants: HashMap<DefId, Ty>,
+    pub field_tys: HashMap<DefId, Vec<(String, Ty)>>,
 }
 
 /// Function signature
@@ -49,6 +52,9 @@ pub struct TypeChecker<'hir> {
 
     // Function signatures
     fn_sigs: HashMap<DefId, FnSig>,
+
+    //rec field types
+    field_tys: HashMap<DefId, Vec<(String, Ty)>>,
 
     // Constant types
     const_tys: HashMap<DefId, Ty>,
@@ -85,6 +91,7 @@ impl<'hir> TypeChecker<'hir> {
             errors: Vec::new(),
             primitive_tys: HashMap::new(),
             expr_substs: HashMap::new(),
+            field_tys: HashMap::new()
         }
     }
 
@@ -107,6 +114,47 @@ impl<'hir> TypeChecker<'hir> {
         }
     }
 
+    pub fn inject_sigs(&mut self, modules: &[ModuleTop]) {
+        let name_to_def: HashMap<&str, DefId> = self.hir.resolve.def_names.iter()
+            .map(|(did, name)| (name.as_str(), *did))
+            .collect();
+
+        for module in modules {
+            for func in &module.functions {
+                if let Some(&def_id) = name_to_def.get(func.name.as_str()) {
+                    let params: Vec<Ty> = func.params.iter()
+                        .map(|(_, ty_str)| Ty::from_name(ty_str))
+                        .collect();
+                    let ret = Ty::from_name(&func.ret);
+                    self.fn_sigs.insert(def_id, FnSig {
+                        type_params: vec![],
+                        params,
+                        ret,
+                    });
+                }
+            }
+
+            for cons in &module.constants {
+                if let Some(&def_id) = name_to_def.get(cons.name.as_str()) {
+                    let ty = Ty::from_name(&cons.ty);
+                    self.const_tys.insert(def_id, ty);
+                }
+            }
+
+            for ty in &module.types {
+                if let Some(&def_id) = name_to_def.get(ty.name.as_str()) {
+                    //to vyacheslav - do not refactor, it is mind point for future, when i will add uni type and enum
+                    if let ExportedTypeKind::Struct { fields } = &ty.kind {
+                        let field_tys: Vec<(String, Ty)> = fields.iter()
+                            .map(|(name, ty_str)| (name.clone(), Ty::from_name(ty_str)))
+                            .collect();
+                        self.field_tys.insert(def_id, field_tys);
+                    }
+                }
+            }
+        }
+    }
+
     /// Checks module
     pub fn check_module(&mut self) -> TypeckOutput {
         //transform primitive types to types for ty_sys
@@ -121,6 +169,9 @@ impl<'hir> TypeChecker<'hir> {
         TypeckOutput {
             bodies,
             prim_tys: self.primitive_tys.clone(), //adt_field_tys: ()
+            fn_sigs: self.fn_sigs.clone(),
+            field_tys: self.field_tys.clone(),
+            constants: self.const_tys.clone()
         }
     }
 
@@ -172,9 +223,11 @@ impl<'hir> TypeChecker<'hir> {
                         .map(|p| self.lower_hir_ty(&p.ty))
                         .collect();
                     let mut ret = self.lower_hir_ty(&f.ret);
-                    if f.body.is_none() && matches!(ret, Ty::Infer(_)) {
+
+                    if matches!(ret, Ty::Infer(_)) {
                         ret = Ty::Unit;
                     }
+
                     self.fn_sigs.insert(
                         item.def_id,
                         FnSig {
@@ -203,6 +256,12 @@ impl<'hir> TypeChecker<'hir> {
                 HirItemKind::Const(c) => {
                     let ty = self.lower_hir_ty(&c.ty);
                     self.const_tys.insert(item.def_id, ty);
+                }
+                HirItemKind::Struct(s) => {
+                    let fields: Vec<(String, Ty)> = s.fields.iter()
+                        .map(|f| (f.name.clone(), self.lower_hir_ty(&f.ty)))
+                        .collect();
+                    self.field_tys.insert(item.def_id, fields);
                 }
                 _ => {}
             }
@@ -436,80 +495,44 @@ impl<'hir> TypeChecker<'hir> {
     ) -> Ty {
         match res {
             Res::Def(DefKind::Struct, did) => {
-                // Retrieving struct def
-                let struct_def = self
-                    .hir
-                    .items
-                    .vec()
-                    .iter()
-                    .find(|item| item.def_id == *did)
-                    .and_then(|item| match &item.kind {
-                        HirItemKind::Struct(s) => Some(s),
-                        _ => None,
-                    });
+                let expected_fields = match self.field_tys.get(did) {
+                    Some(f) => f.clone(),
+                    None => return Ty::Error,
+                };
 
-                // Checking if its found
-                match struct_def {
-                    Some(s) => {
-                        // Checking for fields existence
-                        for (name, init_id) in fields {
-                            let init_ty = self.check_expr(body, *init_id);
-                            match s.fields.iter().find(|f| f.name == *name)
-                            {
-                                Some(field) => {
-                                    let field_ty =
-                                        self.lower_hir_ty(&field.ty);
-                                    self.eq(
-                                        field_ty,
-                                        init_ty,
-                                        span.clone(),
-                                    );
-                                }
-                                None => {
-                                    self.errors.push(
-                                        TyCheckError::NoSuchField {
-                                            ty: s.name.clone(),
-                                            field: name.clone(),
-                                            src: span.0.clone(),
-                                            span: span.1.clone().into(),
-                                        },
-                                    );
-                                }
-                            }
+                for (name, init_id) in fields {
+                    let init_ty = self.check_expr(body, *init_id);
+                    match expected_fields.iter().find(|(n, _)| n == name) {
+                        Some((_, field_ty)) => {
+                            self.eq(field_ty.clone(), init_ty, span.clone());
                         }
-
-                        // Checking for missing fields
-                        let provided: HashSet<&str> = fields
-                            .iter()
-                            .map(|(name, _)| name.as_str())
-                            .collect();
-                        for field in &s.fields {
-                            if !provided.contains(field.name.as_str()) {
-                                self.errors.push(
-                                    TyCheckError::MissingField {
-                                        ty: s.name.clone(),
-                                        field: field.name.clone(),
-                                        src: span.0.clone(),
-                                        span: span.1.clone().into(),
-                                    },
-                                );
-                            }
+                        None => {
+                            self.errors.push(TyCheckError::NoSuchField {
+                                ty: format!("adt#{}", did.0),
+                                field: name.clone(),
+                                src: span.0.clone(),
+                                span: span.1.clone().into(),
+                            });
                         }
-
-                        // Matching provided and fields len
-                        if provided.len() != fields.len() {
-                            self.errors.push(
-                                TyCheckError::DuplicateField {
-                                    ty: s.name.clone(),
-                                    src: span.0.clone(),
-                                    span: span.1.clone().into(),
-                                },
-                            );
-                        }
-                        Ty::Adt(*did, vec![])
                     }
-                    None => Ty::Error,
                 }
+
+                // Missing fields
+                let provided: HashSet<&str> = fields.iter()
+                    .map(|(name, _)| name.as_str())
+                    .collect();
+                for (name, _) in &expected_fields {
+                    if !provided.contains(name.as_str()) {
+                        self.errors.push(TyCheckError::MissingField {
+                            ty: format!("adt#{}", did.0),
+                            field: name.clone(),
+                            src: span.0.clone(),
+                            span: span.1.clone().into(),
+                        });
+                    }
+                }
+
+                Ty::Adt(*did, vec![])
             }
             _ => Ty::Error,
         }
@@ -856,46 +879,22 @@ impl<'hir> TypeChecker<'hir> {
     }
 
     /// Resolves field
-    fn check_field(
-        &mut self,
-        base_ty: Ty,
-        field_name: &str,
-        span: Span,
-    ) -> Ty {
-        // Applying substitutions
+    fn check_field(&mut self, base_ty: Ty, field_name: &str, span: Span) -> Ty {
         let base_ty = self.icx.shallow_apply(base_ty);
 
-        // Matching base type
         match &base_ty {
-            Ty::Adt(def_id, _args) => {
-                let struct_def = self
-                    .hir
-                    .items
-                    .vec()
-                    .iter()
-                    .find(|item| item.def_id == *def_id)
-                    .and_then(|item| match &item.kind {
-                        HirItemKind::Struct(s) => Some(s),
-                        _ => None,
-                    });
-
-                match struct_def {
-                    Some(s) => {
-                        match s
-                            .fields
-                            .iter()
-                            .find(|f| f.name == field_name)
-                        {
-                            Some(field) => self.lower_hir_ty(&field.ty),
+            Ty::Adt(def_id, _) => {
+                match self.field_tys.get(def_id) {
+                    Some(fields) => {
+                        match fields.iter().find(|(n, _)| n == field_name) {
+                            Some((_, ty)) => ty.clone(),
                             None => {
-                                self.errors.push(
-                                    TyCheckError::NoSuchField {
-                                        ty: format!("{}", base_ty),
-                                        field: field_name.to_string(),
-                                        src: span.0.clone(),
-                                        span: span.1.clone().into(),
-                                    },
-                                );
+                                self.errors.push(TyCheckError::NoSuchField {
+                                    ty: format!("{}", base_ty),
+                                    field: field_name.to_string(),
+                                    src: span.0.clone(),
+                                    span: span.1.clone().into(),
+                                });
                                 Ty::Error
                             }
                         }
@@ -1001,8 +1000,9 @@ impl<'hir> TypeChecker<'hir> {
 }
 
 /// Performs module typecheck
-pub fn typeck_module(hir: &Hir) -> (TypeckOutput, Vec<TyCheckError>) {
+pub fn typeck_module(hir: &Hir, deps: &[ModuleTop]) -> (TypeckOutput, Vec<TyCheckError>) {
     let mut checker = TypeChecker::new(hir);
+    checker.inject_sigs(deps);
     let result = checker.check_module();
     (result, checker.errors)
 }

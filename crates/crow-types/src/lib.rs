@@ -102,6 +102,10 @@ impl IntTy {
         let (min, max) = self.range();
         value >= min && value <= max
     }
+
+    pub fn is_signed(&self) -> bool {
+        matches!(self, IntTy::I8 | IntTy::I16 | IntTy::I32 | IntTy::I64)
+    }
 }
 
 /// Float type

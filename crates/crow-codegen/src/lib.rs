@@ -153,14 +153,14 @@ pub fn codegen_module<'llvm>(mir: &MirModule, items: &[MonoItem], module_name: &
     
     let path = Path::new("/home/f0rits/Documents/crow/test/output.o");
     
-    //cg.module.print_to_stderr();
+    cg.module.print_to_stderr();
 
     tm.write_to_file(&cg.module, FileType::Object, path).unwrap();
 
     let link_cfg = LinkConfig::from_target(&build_cfg);
 
     let link_cfg = LinkConfig { 
-        inputs: vec![LinkInput::Object("/home/f0rits/Documents/crow/test/output.o".into()), LinkInput::Archive("/home/f0rits/Documents/crow/runtime/lib/libcrow_rt.a".into())],
+        inputs: vec![LinkInput::Object("/home/f0rits/Documents/crow/test/output.o".into())],
         output: "/home/f0rits/Documents/crow/test/output".into(),
         output_kind: link::OutputKind::Executable,
         ..link_cfg

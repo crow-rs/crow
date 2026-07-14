@@ -17,6 +17,7 @@ use crow_ast::{
 };
 use crow_common::{DefId, LocalId, bug, span::Span};
 use crow_fresh::Freshen;
+use crow_mod_codec_ty::{ExportedTypeKind, ModuleTop};
 use crow_types::Ty;
 use std::collections::{HashMap, HashSet};
 
@@ -351,7 +352,7 @@ impl Resolver {
         for item in &module.items {
             match &item.kind {
                 ItemKind::Rec(s) => self.resolve_struct(&item.span, s),
-                ItemKind::Alt(s) => todo!(), //self.resolve_struct(&item.span, &s.clone()),
+                ItemKind::Alt(_) => todo!(), //self.resolve_struct(&item.span, &s.clone()),
                 ItemKind::Enum(e) => self.resolve_enum(&item.span, e),
                 ItemKind::Fun(f) => self.resolve_function(&item.span, f),
                 ItemKind::Native(n) => {
@@ -644,7 +645,7 @@ impl Resolver {
                     }
                     self.ribs.pop();
                 }
-                ItemKind::Alt(s) => {
+                ItemKind::Alt(_) => {
                     // todo
                     todo!()
                 }
@@ -658,6 +659,55 @@ impl Resolver {
                     self.ribs.pop();
                 }
             }
+        }
+    }
+
+    pub fn inject_imports(&mut self, modules: &[ModuleTop]) {
+        for module in modules {
+            // Регистрируем модуль
+            let mod_def_id = DefId(self.freshen_defs.fresh());
+            self.table.module_by_name.insert(module.module_name.clone(), mod_def_id);
+
+            let mut exports: HashMap<String, DefId> = HashMap::new();
+
+            // Функции
+            for func in &module.functions {
+                let def_id = DefId(self.freshen_defs.fresh());
+                let kind = if func.is_native { DefKind::NativeFun } else { DefKind::Fun };
+                self.table.def_kinds.insert(def_id, kind.clone());
+                self.table.def_names.insert(def_id, func.name.clone());
+                exports.insert(func.name.clone(), def_id);
+
+                // Доступно без квалификации
+                self.ribs.insert(func.name.clone(), Res::Def(kind, def_id));
+            }
+
+            // Типы
+            for ty in &module.types {
+                let def_id = DefId(self.freshen_defs.fresh());
+                let kind = match &ty.kind {
+                    ExportedTypeKind::Struct { fields } => {
+                        // Регистрируем поля
+                        let field_defs: Vec<FieldDef> = fields.iter()
+                            .enumerate()
+                            .map(|(i, (name, _ty_str))| FieldDef {
+                                name: name.clone(),
+                                index: i as u32,
+                                parent: def_id
+                            })
+                            .collect();
+                        self.table.struct_fields.insert(def_id, field_defs);
+                        DefKind::Struct
+                    }
+                };
+                self.table.def_kinds.insert(def_id, kind.clone());
+                self.table.def_names.insert(def_id, ty.name.clone());
+                exports.insert(ty.name.clone(), def_id);
+
+                self.ribs.insert(ty.name.clone(), Res::Def(kind, def_id));
+            }
+
+            self.table.module_exports.insert(mod_def_id, exports);
         }
     }
 

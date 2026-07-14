@@ -9,11 +9,14 @@ use crow_hir::{
     pat::{HirPat, HirPatKind},
     stmt::{HirStmt, HirStmtKind},
 };
-use crow_tycheck::{
-    typeck::TypeckOutput,
-};
+use crow_resolving::table::Res;
+use crow_types::Ty;
+use crow_tycheck::typeck::TypeckOutput;
+use std::collections::{HashMap, HashSet};
 
 pub mod warnings;
+
+use crate::warnings::LinterWarnings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LintId {
@@ -28,6 +31,7 @@ pub struct LintCtxt<'hir> {
     pub diags: Vec<LinterWarnings>,
     pub body: &'hir HirBody,
     pub hir: &'hir Hir,
+    pub tail_exprs: HashSet<ExprId>,
 }
 
 impl<'hir> LintCtxt<'hir> {
@@ -43,6 +47,10 @@ impl<'hir> LintCtxt<'hir> {
     }
     pub fn pat(&self, id: PatId) -> &'hir HirPat {
         self.body.pat(id)
+    }
+
+    pub fn is_tail_expr(&self, expr_id: ExprId) -> bool {
+        self.tail_exprs.contains(&expr_id)
     }
 }
 
@@ -67,6 +75,35 @@ impl<'hir> LintCtxt<'hir> {
             }
         }
         "<expr>".to_string()
+    }
+}
+
+/// Collect all expression IDs that are in tail position
+/// (last expression in a block, both branches of if, all arms of match)
+fn collect_tail_exprs(body: &HirBody, expr_id: ExprId, tails: &mut HashSet<ExprId>) {
+    tails.insert(expr_id);
+    let expr = body.expr(expr_id);
+    match &expr.kind {
+        HirExprKind::Block(stmt_ids) => {
+            if let Some(last) = stmt_ids.last() {
+                let last_stmt = body.stmt(*last);
+                if let HirStmtKind::Expr(eid) = &last_stmt.kind {
+                    collect_tail_exprs(body, *eid, tails);
+                }
+            }
+        }
+        HirExprKind::If(_, then_branch, else_branch) => {
+            collect_tail_exprs(body, *then_branch, tails);
+            if let Some(else_id) = else_branch {
+                collect_tail_exprs(body, *else_id, tails);
+            }
+        }
+        HirExprKind::Match { arms, .. } => {
+            for arm in arms {
+                collect_tail_exprs(body, arm.body, tails);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -134,11 +171,17 @@ impl LintDriver {
 
         if let Some(bid) = body_id {
             let body = hir.body(bid);
+
+            // Collect tail positions
+            let mut tail_exprs = HashSet::new();
+            collect_tail_exprs(body, body.root_expr, &mut tail_exprs);
+
             let mut cx = LintCtxt {
                 diags: Vec::new(),
                 body,
                 hir_types: tycx,
-                hir: hir,
+                hir,
+                tail_exprs,
             };
 
             for p in &mut self.passes {
@@ -281,6 +324,9 @@ impl LintPass for UnusedResultLint {
 
     fn enter_stmt(&mut self, cx: &mut LintCtxt, stmt: &HirStmt) {
         if let HirStmtKind::Expr(eid) = &stmt.kind {
+            // Tail position = return value, not unused
+            if cx.is_tail_expr(*eid) { return; }
+
             let expr = cx.expr(*eid);
             if let HirExprKind::Call(callee_id, _) = &expr.kind {
                 if cx.expr_ty(*eid).is_some_and(|ty| *ty == Ty::Unit || *ty == Ty::Never) {
@@ -295,12 +341,6 @@ impl LintPass for UnusedResultLint {
         }
     }
 }
-
-use crow_resolving::table::Res;
-use crow_types::Ty;
-use std::collections::{HashMap, HashSet};
-
-use crate::warnings::LinterWarnings;
 
 pub struct UnusedVariableLint {
     declared: HashMap<LocalId, (String, Span)>,
@@ -345,9 +385,7 @@ impl LintPass for UnusedVariableLint {
     }
 
     fn enter_expr(&mut self, _cx: &mut LintCtxt, expr: &HirExpr) {
-        if let HirExprKind::Var(crow_resolving::table::Res::Local(lid)) =
-            &expr.kind
-        {
+        if let HirExprKind::Var(Res::Local(lid)) = &expr.kind {
             self.used.insert(*lid);
         }
     }
@@ -435,10 +473,7 @@ impl LintPass for UnusedMutLint {
     fn enter_expr(&mut self, cx: &mut LintCtxt, expr: &HirExpr) {
         if let HirExprKind::Assign(lhs_id, _) = &expr.kind {
             let lhs = cx.expr(*lhs_id);
-            if let HirExprKind::Var(crow_resolving::table::Res::Local(
-                lid,
-            )) = &lhs.kind
-            {
+            if let HirExprKind::Var(Res::Local(lid)) = &lhs.kind {
                 self.assigned.insert(*lid);
             }
         }
