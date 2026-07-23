@@ -140,6 +140,7 @@ dependencies = [
 name = "crow-codegen"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "crow-collect-spec-item",
  "crow-common",
  "crow-mir",

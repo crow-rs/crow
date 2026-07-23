@@ -72,8 +72,3 @@ pub fn serialize_module_info(
         constants: constants,
     }
 }
-
-
-pub fn deserialize_module_info() {
-
-}

@@ -4,7 +4,7 @@ mod io;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use crow_ast::item::{Item, Module, Use};
-use crow_codegen::{codegen_module, comp_ops::TargetConfig};
+use crow_codegen::{codegen_module, comp_ops::TargetConfig, linker};
 use crow_collect_spec_item::collect_special_items;
 use crow_common::{bail, bug, emit};
 use crow_lex::{Lexer, token::TokenKind};
@@ -14,14 +14,14 @@ use crow_lower_mir::lower_hir_to_mir;
 use crow_mir::{FnId, MirModule, verify};
 use crow_mir_monomorph::{Monomorph};
 use crow_mir_passes::mir_optimize;
-use crow_mod_codec_ty::{ModuleTop, save_crowi};
+use crow_mod_codec_ty::{ModuleTop, load_crowi, save_crowi};
 use crow_module_codec::{serialize_module_info};
 use crow_parse::Parser;
 use crow_resolving::resolver::Resolver;
 use crow_tycheck::typeck::typeck_module;
 use miette::NamedSource;
 use std::{
-    collections::{HashMap, HashSet, VecDeque}, sync::Arc,
+    collections::{HashMap, HashSet, VecDeque}, format, path::Path, println, sync::Arc,
 };
 use tracing::info;
 
@@ -157,7 +157,7 @@ impl Driver {
     }
 
     fn scan_imports(&self, path: &Utf8Path) -> (String, Vec<String>) {
-        let code = std::fs::read_to_string(path.as_std_path())
+        let code: String = std::fs::read_to_string(path.as_std_path())
             .unwrap_or_else(|e| panic!("cannot read {}: {}", path, e));
 
         let mut module_name = path.file_stem().unwrap_or("unknown").to_string();
@@ -233,13 +233,18 @@ impl Driver {
     }
 
     fn toposort(&self, graph: &HashMap<String, Vec<String>>) -> Vec<String> {
+        let mut dependents: HashMap<&str, Vec<&str>> = HashMap::new();
         let mut in_degree: HashMap<&str, usize> = HashMap::new();
+
         for name in graph.keys() {
             in_degree.entry(name.as_str()).or_insert(0);
+            dependents.entry(name.as_str()).or_default();
         }
-        for deps in graph.values() {
+
+        for (name, deps) in graph {
+            *in_degree.entry(name.as_str()).or_insert(0) += deps.len();
             for dep in deps {
-                *in_degree.entry(dep.as_str()).or_insert(0) += 1;
+                dependents.entry(dep.as_str()).or_default().push(name.as_str());
             }
         }
 
@@ -249,24 +254,22 @@ impl Driver {
             .collect();
 
         let mut result = Vec::new();
-        let mut visited = 0;
 
         while let Some(node) = queue.pop_front() {
             result.push(node.to_string());
-            visited += 1;
 
-            if let Some(deps) = graph.get(node) {
-                for dep in deps {
-                    let deg = in_degree.get_mut(dep.as_str()).unwrap();
+            if let Some(users) = dependents.get(node) {
+                for user in users {
+                    let deg = in_degree.get_mut(user).unwrap();
                     *deg -= 1;
                     if *deg == 0 {
-                        queue.push_back(dep.as_str());
+                        queue.push_back(user);
                     }
                 }
             }
         }
 
-        if visited != graph.len() {
+        if result.len() != graph.len() {
             let in_cycle: Vec<&str> = in_degree.iter()
                 .filter(|(_, deg)| **deg > 0)
                 .map(|(name, _)| *name)
@@ -311,48 +314,41 @@ impl Driver {
         let graph = self.build_dep_graph(&dep_info);
         let order = self.toposort(&graph);
         info!("compilation order: {:?}", order);
+        
+        let mut build_cfg = TargetConfig::host();
+        build_cfg.output = "/home/f0rits/Documents/crow/test/".to_string();
 
         // 3. Compile each module in order
-        let mut compiled_mirs: Vec<MirModule> = Vec::new();
         let mut had_errors = false;
-
+        let mut objects = Vec::new();
         for name in &order {
-            let (info, _) = dep_info.iter()
+            let (info, deps) = dep_info.iter()
                 .find(|(m, _)| &m.name == name)
                 .unwrap();
 
-            match self.compile_module(info, &vec![]) {
-                Ok(mir) => compiled_mirs.push(mir),
+            let deps_meta: Vec<ModuleTop> = deps.iter().map(|dep| {
+                load_crowi(Path::new(&format!("/home/f0rits/Documents/crow/test/{}.crowi", dep)))
+            }).collect();
+
+            println!("{:?}", deps);
+
+            match self.compile_module(info, &deps_meta, &build_cfg) {
                 Err(()) => {
                     had_errors = true;
                     break;
                 }
+                Ok(path) => objects.push(path),
             }
         }
 
         if had_errors { return; }
 
-        // 4. Monomorphize
-        let mir = compiled_mirs.last().unwrap();
-        let entry_id = mir.functions.iter()
-            .enumerate()
-            .find(|(_, body)| body.name == "main")
-            .map(|(i, _)| FnId::from(i))
-            .expect("no `main` function found");
-
-        let mut mono = Monomorph::new();
-        mono.collect(mir, entry_id);
-        mono.add_lang_items(mir);
-        let items = mono.into_items();
-
-        // 5. Codegen
-        let build_cfg = TargetConfig::host();
-        codegen_module(mir, &items, "module_name", &build_cfg);
+        linker(&build_cfg, &objects, "/home/f0rits/Documents/crow/test/test_exec".into());
 
         println!("✨ Done!");
     }
 
-    fn compile_module(&self, info: &ModuleInfo, deps: &[ModuleTop]) -> Result<MirModule, ()> {
+    fn compile_module(&self, info: &ModuleInfo, deps: &[ModuleTop], build_cfg: &TargetConfig) -> Result<Utf8PathBuf, ()> {
         let name = &info.name;
         info!("compiling module `{name}`");
 
@@ -408,8 +404,35 @@ impl Driver {
             return Err(());
         }
 
+        let mut mono = Monomorph::new();
+
+        if info.name == "main" {
+            let entry_id = mir.functions.iter()
+                .enumerate()
+                .find(|(_, body)| body.name == "main")
+                .map(|(i, _)| FnId::from(i))
+                .expect("no `main` function found");
+            mono.collect(&mir, entry_id);
+        }  else {
+            for (i, body) in mir.functions.iter().enumerate() {
+                // TODO: проверять publicity
+                // Пока — все функции с телом
+                if !body.blocks.is_empty() {
+                    mono.collect(&mir, FnId::from(i));
+                }
+            }
+        }
+
+        mono.add_lang_items(&mir);
+        let items = mono.into_items();
+
+        // 5. Codegen
+        let obj_path: String = format!("/home/f0rits/Documents/crow/test/{}.o", info.name);
+        codegen_module(&mir, &items, info.name.as_str(), &build_cfg, obj_path.clone());
+
         info!("module `{name}` compiled successfully");
-        Ok(mir)
+
+        Ok(Utf8PathBuf::from(obj_path))
     }
 
     fn parse_module(&self, info: &ModuleInfo) -> Module {

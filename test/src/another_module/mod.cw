@@ -87,25 +87,25 @@ fun rc_release(ptr: raw_ptr) {
     }
 }
 
-fun print(s: str) {
+pub fun print(s: str) {
     _ = write(1, str_ptr(s), str_len(s))
 }
 
-fun println(s: str) {
+pub fun println(s: str) {
     print(s)
     print("\n")
 }
 
-fun eprint(s: str) {
+pub fun eprint(s: str) {
     _ = write(2, str_ptr(s), str_len(s))
 }
 
-fun eprintln(s: str) {
+pub fun eprintln(s: str) {
     eprint(s)
     eprint("\n")
 }
 
-fun print_uint(n: i64) {
+pub fun print_uint(n: i64) {
     if n >= 10 {
         print_uint(n / 10)
     }
@@ -116,7 +116,7 @@ fun print_uint(n: i64) {
     free(buf)
 }
 
-fun print_int(n: i64) {
+pub fun print_int(n: i64) {
     if n < 0 {
         print("-")
         print_uint(0 - n)
@@ -129,15 +129,15 @@ pub fun print_i8(n: i8) {
     print_int(n as i64)
 }
 
-fun print_i32(n: i32) {
+pub fun print_i32(n: i32) {
     print_int(n as i64)
 }
 
-fun print_i64(n: i64) {
+pub fun print_i64(n: i64) {
     print_int(n)
 }
 
-fun unreachable() -> ! {
+pub fun unreachable() -> ! {
     panic("entered unreachable code")
 }
 

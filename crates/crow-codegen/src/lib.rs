@@ -12,6 +12,7 @@ mod intrinsic_codegen;
 
 use std::{collections::HashMap, path::Path};
 
+use camino::{Utf8Path, Utf8PathBuf};
 use crow_mir_monomorph::{Instance, MonoItem};
 use crow_types::Ty;
 use inkwell::{
@@ -120,7 +121,7 @@ impl<'llvm, 'mir> Codegen<'llvm, 'mir> {
     }
 }
 
-pub fn codegen_module<'llvm>(mir: &MirModule, items: &[MonoItem], module_name: &str, build_cfg: &TargetConfig) {
+pub fn codegen_module<'llvm>(mir: &MirModule, items: &[MonoItem], module_name: &str, build_cfg: &TargetConfig, path: String) {
     Target::initialize_all(&InitializationConfig::default());
     
     let triple = TargetTriple::create(build_cfg.triple.as_str());
@@ -151,17 +152,21 @@ pub fn codegen_module<'llvm>(mir: &MirModule, items: &[MonoItem], module_name: &
             .run_passes("default<O3>", &tm, inkwell::passes::PassBuilderOptions::create())
             .unwrap();
     
-    let path = Path::new("/home/f0rits/Documents/crow/test/output.o");
+    let path = Path::new(&path);
     
-    cg.module.print_to_stderr();
+    //cg.module.print_to_stderr();
 
     tm.write_to_file(&cg.module, FileType::Object, path).unwrap();
+}
 
+pub fn linker(build_cfg: &TargetConfig, objects: &[Utf8PathBuf], output: &Utf8Path) {
     let link_cfg = LinkConfig::from_target(&build_cfg);
 
+    let inputs = objects.iter().map(|obj| LinkInput::Object(obj.into())).collect();
+    
     let link_cfg = LinkConfig { 
-        inputs: vec![LinkInput::Object("/home/f0rits/Documents/crow/test/output.o".into())],
-        output: "/home/f0rits/Documents/crow/test/output".into(),
+        inputs,
+        output: output.into(),
         output_kind: link::OutputKind::Executable,
         ..link_cfg
     };
