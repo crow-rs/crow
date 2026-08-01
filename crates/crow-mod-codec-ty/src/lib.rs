@@ -1,7 +1,15 @@
+use crow_common::ModuleId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct ModuleTop {
+    /// Id of the module this interface belongs to.
+    ///
+    /// Makes the artifact self-identifying: a consumer can tag imported
+    /// definitions with the id of their real owner instead of inventing
+    /// local ones.
+    pub module_id: ModuleId,
+
     pub module_name: String,
     pub functions: Vec<ExportedFn>,
     pub types: Vec<ExportedType>,

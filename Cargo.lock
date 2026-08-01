@@ -168,6 +168,7 @@ name = "crow-common"
 version = "0.1.0"
 dependencies = [
  "miette",
+ "serde",
 ]
 
 [[package]]
@@ -195,6 +196,8 @@ dependencies = [
  "miette",
  "petgraph",
  "rayon",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tracing",
  "walkdir",
@@ -298,6 +301,7 @@ dependencies = [
 name = "crow-mod-codec-ty"
 version = "0.1.0"
 dependencies = [
+ "crow-common",
  "serde",
  "serde_json",
 ]
@@ -307,6 +311,7 @@ name = "crow-module-codec"
 version = "0.1.0"
 dependencies = [
  "crow-ast",
+ "crow-common",
  "crow-hir",
  "crow-mod-codec-ty",
  "crow-tycheck",

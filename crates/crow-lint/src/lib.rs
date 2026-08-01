@@ -69,7 +69,7 @@ impl<'hir> LintCtxt<'hir> {
                     return match &item.kind {
                         HirItemKind::Fun(f) => f.name.clone(),
                         HirItemKind::Native(n) => n.name.clone(),
-                        _ => format!("def#{}", did.0),
+                        _ => format!("adt#[Module id: {:?} | DefId: {:?}]", did.module, did.local),
                     };
                 }
             }

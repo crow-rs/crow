@@ -44,10 +44,13 @@ fn main() {
     // ));
 
     
-    let driver = Driver::new(DriverConfig::new(
-        Utf8PathBuf::from("/home/f0rits/Documents/crow/test/src"),
-        Utf8PathBuf::from("/home/f0rits/Documents/crow/test/target"),
-    ));
+    let driver = Driver::new(
+        DriverConfig::new(
+            Utf8PathBuf::from("/home/f0rits/Documents/crow/test/src"),
+            Utf8PathBuf::from("/home/f0rits/Documents/crow/test/target"),
+        )
+        .with_exec_name("test_exec"),
+    );
     
 
     driver.compile();

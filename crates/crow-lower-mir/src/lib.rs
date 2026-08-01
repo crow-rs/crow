@@ -4,7 +4,7 @@ use crow_ast::atom::{
     BinOp as AstBinOp, Lit, Mutability, UnOp as AstUnOp,
 };
 use crow_collect_spec_item::SpecialItems;
-use crow_common::{DefId, LocalId};
+use crow_common::{DefId, LocalDefId, LocalId, ModuleId};
 use crow_hir::{
     Hir,
     body::HirBody,
@@ -1465,7 +1465,7 @@ impl<'a, 'hir> BodyBuilder<'a, 'hir> {
             collect_free_vars(self.hir_body, body_expr, &bound);
 
         let env_def_id =
-            DefId(u32::MAX - self.lcx.mir_tcx.adts.len() as u32);
+            DefId{module: ModuleId(0), local: LocalDefId(u32::MAX - self.lcx.mir_tcx.adts.len() as u32)};
         let env_fields: Vec<Ty> = free_vars
             .iter()
             .map(|(lid, _)| self.local_ty(*lid))

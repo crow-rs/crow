@@ -508,7 +508,7 @@ impl<'hir> TypeChecker<'hir> {
                         }
                         None => {
                             self.errors.push(TyCheckError::NoSuchField {
-                                ty: format!("adt#{}", did.0),
+                                ty: format!("adt#[Module id: {:?} | DefId: {:?}]", did.module, did.local),
                                 field: name.clone(),
                                 src: span.0.clone(),
                                 span: span.1.clone().into(),
@@ -524,7 +524,7 @@ impl<'hir> TypeChecker<'hir> {
                 for (name, _) in &expected_fields {
                     if !provided.contains(name.as_str()) {
                         self.errors.push(TyCheckError::MissingField {
-                            ty: format!("adt#{}", did.0),
+                            ty: format!("adt#[Module id: {:?} | DefId: {:?}]", did.module, did.local),
                             field: name.clone(),
                             src: span.0.clone(),
                             span: span.1.clone().into(),

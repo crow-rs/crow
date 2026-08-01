@@ -2,7 +2,7 @@
 use crow_ast::{
     atom::{Effects, Publicity, TypeHint}, expr::{Case, Expr, ExprKind, Pat, PatKind}, item::{Attribute, Item, ItemKind, Module}, stmt::{Stmt, StmtKind},
 };
-use crow_common::{DefId, LocalId, bug, span::Span};
+use crow_common::{DefId, LocalDefId, LocalId, ModuleId, bug, span::Span};
 use crow_fresh::FreshenVec;
 use crow_hir::{
     Hir,
@@ -563,7 +563,7 @@ impl LoweringCtxt {
                             .variant_by_name
                             .get(&(def_id, v.name.clone()))
                             .copied()
-                            .unwrap_or(DefId(u32::MAX));
+                            .unwrap_or(DefId{module: ModuleId(0), local: LocalDefId(u32::MAX)});
                         HirVariantDef {
                             span: v.span.clone(),
                             def_id: variant_def_id,
@@ -647,7 +647,7 @@ impl LoweringCtxt {
             .iter()
             .find(|(_, n)| n.as_str() == name)
             .map(|(id, _)| *id)
-            .unwrap_or(DefId(u32::MAX))
+            .unwrap_or(DefId{module: ModuleId(0), local: LocalDefId(u32::MAX)})
     }
 
     /// Lowers module

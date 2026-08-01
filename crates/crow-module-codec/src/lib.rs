@@ -1,9 +1,11 @@
 use crow_ast::atom::Publicity;
+use crow_common::ModuleId;
 use crow_hir::{Hir, item::HirItemKind};
 use crow_mod_codec_ty::{ExportedConst, ExportedFn, ExportedType, ExportedTypeKind, ModuleTop};
 use crow_tycheck::typeck::TypeckOutput;
 
 pub fn serialize_module_info(
+    module_id: ModuleId,
     module_name: &str,
     hir: &Hir,
     typeck: &TypeckOutput,
@@ -66,6 +68,7 @@ pub fn serialize_module_info(
     }
 
     ModuleTop {
+        module_id,
         module_name: module_name.to_string(),
         functions,
         types,

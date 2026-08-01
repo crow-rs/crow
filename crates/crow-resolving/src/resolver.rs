@@ -15,7 +15,7 @@ use crow_ast::{
     },
     stmt::{Stmt, StmtKind},
 };
-use crow_common::{DefId, LocalId, bug, span::Span};
+use crow_common::{DefId, LocalDefId, LocalId, ModuleId, bug, span::Span};
 use crow_fresh::Freshen;
 use crow_mod_codec_ty::{ExportedTypeKind, ModuleTop};
 use crow_types::Ty;
@@ -82,6 +82,12 @@ impl RibsStack {
 /// Defines a resolver used to resolve
 /// all the top-level items, locals and type hints
 pub struct Resolver {
+    /// Id of the module being resolved.
+    ///
+    /// Every `DefId` minted here carries it, which is what makes definitions
+    /// of different modules distinguishable once interfaces are shared.
+    module: ModuleId,
+
     /// Resolutions table
     table: ResolveTable,
 
@@ -104,8 +110,9 @@ pub struct Resolver {
 /// Resolver implementation
 impl Resolver {
     /// Creates new resolver with registered builtins
-    pub fn new() -> Self {
+    pub fn new(module: ModuleId) -> Self {
         let mut resolver = Self {
+            module,
             table: ResolveTable::default(),
             freshen_defs: Freshen::new(),
             freshen_locals: Freshen::new(),
@@ -117,10 +124,29 @@ impl Resolver {
         resolver
     }
 
+    /// Mints a fresh `DefId` owned by the module being resolved
+    fn fresh_def_id(&mut self) -> DefId {
+        DefId {
+            module: self.module,
+            local: LocalDefId(self.freshen_defs.fresh()),
+        }
+    }
+
+    /// Mints a fresh `DefId` owned by `module`.
+    ///
+    /// Used for definitions that do not belong to the current module:
+    /// builtins and items pulled in from a dependency's interface.
+    fn fresh_def_id_in(&mut self, module: ModuleId) -> DefId {
+        DefId {
+            module,
+            local: LocalDefId(self.freshen_defs.fresh()),
+        }
+    }
+
     /// Registers builtin types
     fn register_builtin_types(&mut self) {
         for name in Ty::builtin_names() {
-            let def_id = DefId(self.freshen_defs.fresh());
+            let def_id = self.fresh_def_id_in(ModuleId::BUILTIN);
             self.table.def_kinds.insert(def_id, DefKind::BuiltinType);
             self.table.def_names.insert(def_id, name.to_string());
             self.ribs.insert(
@@ -194,7 +220,7 @@ impl Resolver {
         variant: &Variant,
     ) -> VariantDef {
         // Getting fresh def id for variant
-        let variant_id = DefId(self.freshen_defs.fresh());
+        let variant_id = self.fresh_def_id();
 
         // Preparing def kind
         let def_kind = DefKind::Variant {
@@ -257,7 +283,7 @@ impl Resolver {
     /// Resolves struct
     fn resolve_struct(&mut self, span: &Span, s: &AdtRec) {
         // Getting fresh def id
-        let def_id = DefId(self.freshen_defs.fresh());
+        let def_id = self.fresh_def_id();
 
         // Updating table
         self.table.def_kinds.insert(def_id, DefKind::Struct);
@@ -275,7 +301,7 @@ impl Resolver {
     /// Resolves enum
     fn resolve_enum(&mut self, span: &Span, e: &Enum) {
         // Getting fresh def id
-        let def_id = DefId(self.freshen_defs.fresh());
+        let def_id =self.fresh_def_id();
 
         // Updating table
         self.table.def_kinds.insert(def_id, DefKind::Enum);
@@ -292,14 +318,14 @@ impl Resolver {
 
     /// Resolves function
     fn resolve_function(&mut self, span: &Span, f: &Fun) {
-        let def_id = DefId(self.freshen_defs.fresh());
+        let def_id = self.fresh_def_id();
 
         self.table.def_kinds.insert(def_id, DefKind::Fun);
         self.table.def_spans.insert(def_id, span.clone());
         self.table.def_names.insert(def_id, f.name.clone());
 
         for (index, tp) in f.generics.iter().enumerate() {
-            let tp_def_id = DefId(self.freshen_defs.fresh());
+            let tp_def_id = self.fresh_def_id();
             self.table.def_kinds.insert(tp_def_id, DefKind::TypeParam);
             self.table.def_names.insert(tp_def_id, tp.clone());
             self.table.type_params.insert(
@@ -319,7 +345,7 @@ impl Resolver {
     /// Resolves native function
     fn resolve_native_function(&mut self, span: &Span, f: &NativeFun) {
         // Getting fresh def id
-        let def_id = DefId(self.freshen_defs.fresh());
+        let def_id = self.fresh_def_id();
 
         // Updating table
         self.table.def_kinds.insert(def_id, DefKind::NativeFun);
@@ -334,7 +360,7 @@ impl Resolver {
     /// Resolves constant
     fn resolve_const(&mut self, span: &Span, c: &Const) {
         // Getting fresh def id
-        let def_id = DefId(self.freshen_defs.fresh());
+        let def_id = self.fresh_def_id();
 
         // Updating table
         self.table.def_kinds.insert(def_id, DefKind::Const);
@@ -662,17 +688,27 @@ impl Resolver {
         }
     }
 
+    /// Injects interfaces of the dependencies into the current scope.
+    ///
+    /// Imported definitions are tagged with the id of the module that owns
+    /// them, so `DefId::is_local` tells local items from foreign ones.
+    ///
+    /// TODO: the local part is still freshly minted here instead of being read
+    /// back from the interface, so a `DefId` of an imported item does not yet
+    /// equal the `DefId` the exporting module assigned to it.
     pub fn inject_imports(&mut self, modules: &[ModuleTop]) {
         for module in modules {
+            let owner = module.module_id;
+
             // Регистрируем модуль
-            let mod_def_id = DefId(self.freshen_defs.fresh());
+            let mod_def_id = self.fresh_def_id_in(owner);
             self.table.module_by_name.insert(module.module_name.clone(), mod_def_id);
 
             let mut exports: HashMap<String, DefId> = HashMap::new();
 
             // Функции
             for func in &module.functions {
-                let def_id = DefId(self.freshen_defs.fresh());
+                let def_id = self.fresh_def_id_in(owner);
                 let kind = if func.is_native { DefKind::NativeFun } else { DefKind::Fun };
                 self.table.def_kinds.insert(def_id, kind.clone());
                 self.table.def_names.insert(def_id, func.name.clone());
@@ -684,7 +720,7 @@ impl Resolver {
 
             // Типы
             for ty in &module.types {
-                let def_id = DefId(self.freshen_defs.fresh());
+                let def_id = self.fresh_def_id_in(owner);
                 let kind = match &ty.kind {
                     ExportedTypeKind::Struct { fields } => {
                         // Регистрируем поля

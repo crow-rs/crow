@@ -91,10 +91,10 @@ impl fmt::Display for AggregateKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AggregateKind::Adt { def_id, variant } => {
-                write!(f, "adt#{}::variant#{}", def_id.0, variant)
+                write!(f, "adt#[mod:{:?} | local: {:?}]::variant#{}", def_id.module, def_id.local, variant)
             }
             AggregateKind::Closure { fn_id, env_def } => {
-                write!(f, "closure(fn{}, env=adt#{})", fn_id.0, env_def.0)
+                write!(f, "closure(fn{}, env=adt#[mod:{:?} | local: {:?}])", fn_id.0, env_def.module, env_def.local)
             }
         }
     }
@@ -274,14 +274,14 @@ impl fmt::Display for MirModule {
         for (def_id, adt) in &self.tcx.adts {
             if adt.variants.len() == 1 {
                 // rec (struct)
-                writeln!(f, "rec {} {{  // adt#{}", adt.name, def_id.0)?;
+                writeln!(f, "rec {} {{  // adt#[mod:{:?} | local: {:?}]", adt.name, def_id.module, def_id.local)?;
                 for (i, field) in adt.variants[0].fields.iter().enumerate() {
                     writeln!(f, "    {i}: {field}")?;
                 }
                 writeln!(f, "}}\n")?;
             } else {
                 // enum
-                writeln!(f, "enum {} {{  // adt#{}", adt.name, def_id.0)?;
+                writeln!(f, "enum {} {{  // adt#[mod:{:?} | local: {:?}]", adt.name, def_id.module, def_id.local)?;
                 for variant in &adt.variants {
                     if variant.fields.is_empty() {
                         writeln!(f, "    {}", variant.name)?;

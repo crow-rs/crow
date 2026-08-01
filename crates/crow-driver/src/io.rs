@@ -1,5 +1,5 @@
 /// Imports
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use crow_common::bail;
 use miette::Diagnostic;
 use std::{fs, path::PathBuf};
@@ -72,6 +72,24 @@ pub fn read(path: &Utf8PathBuf) -> String {
     match fs::read_to_string(path) {
         Ok(text) => text,
         Err(_) => bail!(IoError::FailedToRead { path: path.clone() }),
+    }
+}
+
+/// Writes string to file
+pub fn write(path: &Utf8Path, text: &str) {
+    if let Err(_) = fs::write(path, text) {
+        bail!(IoError::FailedToWrite {
+            path: path.to_path_buf()
+        })
+    }
+}
+
+/// Creates directory tree if it does not exist yet
+pub fn mkdir_all(path: &Utf8Path) {
+    if let Err(_) = fs::create_dir_all(path) {
+        bail!(IoError::FailedToMkdirAll {
+            path: path.to_path_buf()
+        })
     }
 }
 

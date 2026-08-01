@@ -226,7 +226,7 @@ impl fmt::Display for Ty {
             Ty::Param(_, idx) => write!(f, "T{}", idx),
             Ty::RawPtr => write!(f, "raw"),
             Ty::Adt(def_id, args) => {
-                write!(f, "adt#{}", def_id.0)?;
+                write!(f, "adt#[Module id: {:?} | local_id: {:?}]", def_id.module, def_id.local)?;
                 if !args.is_empty() {
                     write!(f, "<")?;
                     for (i, arg) in args.iter().enumerate() {
